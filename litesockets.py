@@ -9,7 +9,7 @@ if not "EPOLLRDHUP" in dir(select):
 class UdpSocket():
   def __init__(self, ip, port=None):
     self.TYPE = "UDP"
-    self.log = logging.getLogger("root.litesocket.UdpSocket")
+    self.log = logging.getLogger("root.litesockets.UdpSocket")
     self.ip = ip
     self.port = port
     self.onData = None
@@ -22,7 +22,7 @@ class UdpSocket():
     self.ReadLock = threading.Condition()
     self.readBuffSize = 0
     self.readBuff = list()
-    self.GP = gp()
+    self.GP = SocketExecuter()
 
   def connect(self):
     self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -106,7 +106,7 @@ class TcpServer():
     self.onConnect = None
     self.certfile = certfile
     self.keyfile = keyfile
-    self.GP = gp()
+    self.GP = SocketExecuter()
     self.GP.start()
     self.socket = None
 
@@ -145,7 +145,7 @@ class TcpClient():
     self.plainSock = None
     self.WriteLock = threading.Condition()
     self.ReadLock = threading.Condition()
-    self.GP = gp()
+    self.GP = SocketExecuter()
 
   def connect(self, ip, port, do_ssl=False):
     self.ip = ip
@@ -233,6 +233,7 @@ class TcpClient():
   def end(self):
     try:
       self.socket.shutdown(socket.SHUT_RDWR)
+      self.socket.close()
     except:
       pass
 
@@ -249,7 +250,7 @@ class SocketExecuter():
     self.Errors = select.epoll()
     self.Acceptor = select.epoll()
     self.Executor = Executor(threads)
-    self.log = logging.getLogger("root.net.gp")
+    self.log = logging.getLogger("root.litesockets.SocketExecuter")
     self.ST = None # Socket Thread
     self.stats = dict()
     self.stats['RB'] = 0
@@ -338,6 +339,7 @@ class SocketExecuter():
       #self.Errors.register(FN, select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR)
       self.setRead(client)
       self.log.debug("Added Client")
+      self.log.debug("%d"%FN)
     except:
       self.rmClient()
       return False
@@ -404,8 +406,10 @@ class SocketExecuter():
     for fileno, event in events:
       read_client = self.clients[fileno]
       if event & select.EPOLLIN:
+        print "READ"
         self.clientRead(read_client)
-      elif event & select.EPOLLRDHUP or event & select.EPOLLHUP or event & select.EPOLLERR:
+      if event & select.EPOLLRDHUP or event & select.EPOLLHUP or event & select.EPOLLERR:
+        print "ERROR"
         self.clientErrors(read_client, fileno)
 
   def clientRead(self, read_client):
@@ -421,6 +425,7 @@ class SocketExecuter():
         if len(data) > 0 and read_client.onData != None: 
           read_client.addRead(data)
           self.Executor.schedule(read_client.gotRead, key=read_client)
+        print len(data)
       elif read_client.TYPE == "CUSTOM":
         data = read_client.READER()
         if len(data) > 0 and read_client.onData != None: 
@@ -466,7 +471,7 @@ class SocketExecuter():
           self.log.debug(e)
 
   def clientErrors(self, client, fileno):
-    self.log.debug("Removeing Socket %d %d"%(fileno, event))
+    self.log.debug("Removeing Socket %d "%(fileno))
     self.rmClient(client)
     if client.onClose != None:
       client.onClose(fileno)
@@ -477,7 +482,7 @@ class SocketExecuter():
       if fileno in self.servers:
         SERVER = self.servers[fileno]
         self.log.debug("New Connection")
-        t = tcpClient()
+        t = TcpClient()
         if SERVER.onConnect != None:
           SERVER.onConnect(t)
         conn, addr = SERVER.socket.accept()
@@ -487,12 +492,3 @@ class SocketExecuter():
         t.init_conn()
         self.addClient(t)
 
-
-if __name__=="__main__":
-    def simple():
-      print "Simple Test!"
-    GP = gp()
-    GP2 = gp()
-    GP.Executor.schedule(simple, delay=1200, recurring=True)
-    time.sleep(5)
-    print GP, GP2
