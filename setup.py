@@ -3,7 +3,7 @@ from distutils.core import setup
 
 setup (# Distribution meta-data
        name = "litesockets",
-       version = "0.1.0",
+       version = "0.1.1",
        author = "Luke Wahlmeier",
        author_email = "lwahlmeier@gmail.com",
        url = "None",

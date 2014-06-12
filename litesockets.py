@@ -406,10 +406,8 @@ class SocketExecuter():
     for fileno, event in events:
       read_client = self.clients[fileno]
       if event & select.EPOLLIN:
-        print "READ"
         self.clientRead(read_client)
       if event & select.EPOLLRDHUP or event & select.EPOLLHUP or event & select.EPOLLERR:
-        print "ERROR"
         self.clientErrors(read_client, fileno)
 
   def clientRead(self, read_client):
@@ -425,7 +423,6 @@ class SocketExecuter():
         if len(data) > 0 and read_client.onData != None: 
           read_client.addRead(data)
           self.Executor.schedule(read_client.gotRead, key=read_client)
-        print len(data)
       elif read_client.TYPE == "CUSTOM":
         data = read_client.READER()
         if len(data) > 0 and read_client.onData != None: 
