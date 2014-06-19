@@ -1,14 +1,19 @@
 #!/usr/bin/env python
-from distutils.core import setup
+try:
+  from setuptools import setup
+except ImportError:
+  from distutils.core import setup
+
 
 setup (# Distribution meta-data
        name = "litesockets",
-       version = "0.1.1",
+       version = "0.2.4",
        author = "Luke Wahlmeier",
        author_email = "lwahlmeier@gmail.com",
        url = "None",
        license = "lgpl",
        description = "",
        install_requires = ['threadly'],
-       py_modules =  ['litesockets'],
+       packages =  ['litesockets'],
+       test_suite = 'tests',
       )
