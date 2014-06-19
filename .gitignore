@@ -1,3 +1,5 @@
 *.pyc
 *.log
 *.swp
+*egg*
+build/
