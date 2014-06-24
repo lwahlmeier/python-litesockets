@@ -21,7 +21,6 @@ class SSLClient(client.Client):
       self.plainSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       self.log.debug("connecting %s:%d"%(self.host, self.port))
       self.plainSock.connect((self.host, self.port))
-    print "do_ssl"
     self.socket = self.do_ssl()
     self.init_conn(self.socket)
     self.SUPER.connect(self.socket, self.TYPE)
