@@ -175,9 +175,10 @@ class SocketExecuter():
     events = self.Reader.poll(10000)
     for fileno, event in events:
       read_client = self.clients[fileno]
+      dlen = 0
       if event & select.EPOLLIN:
-        self.clientRead(read_client)
-      if event & select.EPOLLRDHUP or event & select.EPOLLHUP or event & select.EPOLLERR:
+        dlen = self.clientRead(read_client)
+      if dlen == 0 and (event & select.EPOLLRDHUP or event & select.EPOLLHUP or event & select.EPOLLERR):
         self.clientErrors(read_client, fileno)
 
   def clientRead(self, read_client):
