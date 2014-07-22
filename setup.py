@@ -1,19 +1,18 @@
 #!/usr/bin/env python
-try:
-  from setuptools import setup
-except ImportError:
-  from distutils.core import setup
+from distutils.core import setup
 
 
 setup (# Distribution meta-data
        name = "litesockets",
-       version = "0.2.4",
+       version = "0.2.5",
        author = "Luke Wahlmeier",
        author_email = "lwahlmeier@gmail.com",
-       url = "None",
+       url = "https://github.com/lwahlmeier/python-litesockets",
+       download_url = "https://github.com/lwahlmeier/python-litesockets/tarball/0.2.5",
        license = "lgpl",
-       description = "",
-       install_requires = ['threadly'],
+       description = "A multi threaded socket library for python",
+       requires = ['threadly'],
        packages =  ['litesockets'],
-       test_suite = 'tests',
+       platforms = ('linux',),
+       keywords = ("networking",),
       )
