@@ -7,7 +7,7 @@ except ImportError:
 
 setup (# Distribution meta-data
        name = "litesockets",
-       version = "0.2.4",
+       version = "0.2.5",
        author = "Luke Wahlmeier",
        author_email = "lwahlmeier@gmail.com",
        url = "None",

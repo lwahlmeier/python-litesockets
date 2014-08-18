@@ -58,9 +58,10 @@ class UdpServer(client.Client):
     except:
       pass
 
-  def mkUdpClient(host, port):
-      client = UdpClient(host, port, self)
-      self.clients[X[0]] = client
+  def mkUdpClient(self, host, port):
+      client = UdpClient(self, host, port)
+      self.clients[(client.host, client.port)] = client
+      return client
     
 
 
