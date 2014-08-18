@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup (# Distribution meta-data
        name = "litesockets",
-       version = "0.2.9",
+       version = "0.3.9",
        author = "Luke Wahlmeier",
        author_email = "lwahlmeier@gmail.com",
        url = "https://github.com/lwahlmeier/python-litesockets",
@@ -12,7 +12,7 @@ setup (# Distribution meta-data
        test_suite = "tests",
        license = "lgpl",
        description = "A multi threaded socket library for python",
-       install_requires = ['threadly'],
+       install_requires = ['threadly>=0.2'],
        packages =  ['litesockets'],
        keywords = ["networking"],
       )

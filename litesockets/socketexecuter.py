@@ -1,5 +1,5 @@
 import select, logging, threading, sys, ssl, errno, socket
-from threadly import Executor
+from threadly import Scheduler
 from litesockets.client import Client
 from litesockets.server import Server
 
@@ -17,7 +17,7 @@ class SocketExecuter():
     self.Writer = select.epoll()
     self.Acceptor = select.epoll()
     if executor == None:
-      self.Executor = Executor(threads)
+      self.Executor = Scheduler(threads)
     else:
       self.Executor = executor
     self.SCH = self.Executor.schedule
