@@ -20,7 +20,7 @@ class UdpServer(client.Client):
     self.SUPER.connect(sock, self.TYPE)
 
   def runRead(self):
-    X = self.read_buff.pop(0)
+    X = self.getRead()
     if self.onNew == None:
       return
     if X[0] not in self.clients:
@@ -28,7 +28,7 @@ class UdpServer(client.Client):
       self.onNew(client)
       self.clients[X[0]] = client
     self.clients[X[0]].addRead(X[1])
-    self.clients[X[0]].runRead()
+    self.SE.Executor.schedule(self.clients[X[0]].runRead, key=self.clients[X[0]])
 
   def addWrite(self, data):
     self.socket.sendto(data[1], data[0])
@@ -50,7 +50,16 @@ class UdpServer(client.Client):
       self.readlock.release()
 
   def getRead(self):
-    return self.SUPER.getRead()
+    self.readlock.acquire()
+    try:
+      data = self.read_buff.pop(0)
+      l = len(data[1])
+      self.readBuffSize-=l
+      if (self.readBuffSize+l) >= self.MAXBUFFER and self.readBuffSize < self.MAXBUFFER:
+        self.SE.setRead(self, on=True)
+      return data
+    finally:
+      self.readlock.release()
 
   def end(self):
     try:
