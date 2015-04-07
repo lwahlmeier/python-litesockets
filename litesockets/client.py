@@ -23,8 +23,13 @@ class Client(object):
   def connect(self, socket, socketType):
     self.TYPE = socketType
     self.socket = socket
-
     return
+
+  def setReader(self, reader):
+    self.reader = reader
+
+  def setCloser(self, closer):
+    self.closer = closer
 
   @abc.abstractmethod
   def runRead(self):
@@ -68,16 +73,35 @@ class Client(object):
   def addWrite(self, data):
     """This will add data to be written on the socket.  Make sure this is called once with all needed data or single threaded, otherwise data might get written out of order.
     This function will block if you are writting to fast.  It should be safe to call with the Thread you get a Read on Even if your talking to yourself (unless the SocketExecuter is limited to 1 thread)"""
+    self.writeBlocking(data)
+
+  @abc.abstractmethod
+  def writeBlocking(self, data):
     self.writelock.acquire()
-    try:
-      self.write_buff.extend(data)
-      self.writeBuffSize+=len(data)
-      if self.writeBuffSize > 0:
-        self.SE.setWrite(self, True)
-      while self.writeBuffSize >= self.MAXBUFFER:
-        self.writelock.wait()
-    finally:
-      self.writelock.release()
+    ret = self.writeTry(data)
+    while not ret :
+      self.writelock.wait()
+      ret = self.writeTry(data)
+    self.writelock.release()
+
+  @abc.abstractmethod
+  def writeTry(self, data):
+    wrote = False
+    self.writelock.acquire()
+    if self.writeBuffSize <= self.MAXBUFFER:
+      self.writeForce(data)
+      wrote = True
+    self.writelock.release()
+    return wrote
+
+  @abc.abstractmethod
+  def writeForce(self, data):
+    self.writelock.acquire()
+    self.write_buff.extend(data)
+    self.writeBuffSize+=len(data)
+    if self.writeBuffSize > 0:
+      self.SE.setWrite(self, True)
+    self.writelock.release()
 
   @abc.abstractmethod
   def getWrite(self):

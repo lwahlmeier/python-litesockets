@@ -53,6 +53,15 @@ class SSLClient(client.Client):
   def reduceWrite(self, size):
     self.SUPER.reduceWrite(size)
 
+  def writeTry(self, data):
+    return self.SUPER.writeTry(data)
+
+  def writeBlocking(self, data):
+    self.SUPER.writeBlocking(data)
+
+  def writeForce(self, data):
+    self.SUPER.writeForce(data)
+
   def end(self):
     self.SUPER.end()
     self.plainSock.close()

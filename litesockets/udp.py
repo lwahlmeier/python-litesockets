@@ -33,6 +33,15 @@ class UdpServer(client.Client):
   def addWrite(self, data):
     self.socket.sendto(data[1], data[0])
 
+  def writeTry(self, data):
+    self.socket.sendto(data[1], data[0])
+
+  def writeBlocking(self, data):
+    self.socket.sendto(data[1], data[0])
+
+  def writeForce(self, data):
+    self.socket.sendto(data[1], data[0])
+
   def getWrite(self):
     pass
 
@@ -92,6 +101,15 @@ class UdpClient(client.Client):
     self.SUPER.runRead()
 
   def addWrite(self, data):
+    self.server.addWrite([(self.host, self.port), data])
+
+  def writeTry(self, data):
+    self.server.addWrite([(self.host, self.port), data])
+
+  def writeBlocking(self, data):
+    self.server.addWrite([(self.host, self.port), data])
+
+  def writeForce(self, data):
     self.server.addWrite([(self.host, self.port), data])
 
   def reduceWrite(self, size):

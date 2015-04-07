@@ -31,7 +31,7 @@ class TestTcp(unittest.TestCase):
     self.SE.addServer(server)
     client = litesockets.TcpClient("localhost", PORT)
     test_client = testClass(self.SE)
-    client.reader = test_client.read
+    client.setReader(test_client.read)
     client.connect()
     self.SE.addClient(client)
     client.addWrite(TEST_STRING)

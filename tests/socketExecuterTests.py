@@ -145,6 +145,7 @@ class TestSE(unittest.TestCase):
     self.assertEquals(len(ta.clients), 1)
     ta.clients[0].MAXBUFFER=20
     for i in xrange(20):
+      print "write", 1
       ta.clients[0].addWrite("T"*10)
     c = 0
     while cta.read_len < 200 and c < 500:
@@ -153,4 +154,7 @@ class TestSE(unittest.TestCase):
     self.assertEquals(cta.read_len, 200)
     SE.stop()
     SE.Executor.shutdown()
+
+if __name__ == '__main__':
+  unittest.main()
 

@@ -35,6 +35,15 @@ class TcpClient(client.Client):
   def addWrite(self, data):
     self.SUPER.addWrite(data)
 
+  def writeTry(self, data):
+    return self.SUPER.writeTry(data)
+
+  def writeBlocking(self, data):
+    self.SUPER.writeBlocking(data)
+
+  def writeForce(self, data):
+    self.SUPER.writeForce(data)
+
   def getWrite(self):
     return self.SUPER.getWrite()
 
