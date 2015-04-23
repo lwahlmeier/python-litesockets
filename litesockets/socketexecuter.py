@@ -1,7 +1,7 @@
 import select, logging, threading, sys, ssl, errno, socket
-from threadly import Executor
-from litesockets.client import Client
-from litesockets.server import Server
+from threadly import Scheduler
+from .client import Client
+from .server import Server
 
 if not "EPOLLRDHUP" in dir(select):
   select.EPOLLRDHUP = 0x2000
@@ -9,6 +9,13 @@ if not "EPOLLRDHUP" in dir(select):
 EMPTY = ""
 
 class SocketExecuter():
+  """
+  The main SocketExecuter for litesockets.  
+
+  The SocketExecuter is what processes all socket operations.  Doing the writes, reads, and accepts.  It will also do the callback
+  when a read or accept happen.  Having a SocketExecuter is required for all litesockets Connections, and in general only 1 is need
+  per process.
+  """
   def __init__(self, threads=5, executor=None):
     self.DEFAULT = select.EPOLLIN|select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR
     self.clients = dict()
@@ -17,7 +24,7 @@ class SocketExecuter():
     self.Writer = select.epoll()
     self.Acceptor = select.epoll()
     if executor == None:
-      self.Executor = Executor(threads)
+      self.Executor = Scheduler(threads)
     else:
       self.Executor = executor
     self.SCH = self.Executor.schedule
@@ -27,6 +34,9 @@ class SocketExecuter():
     self.stats['SB'] = 0
     self.running = False
     self.start()
+
+  def getScheduler():
+    return self.Executor
 
   def start(self):
     if self.running == False:

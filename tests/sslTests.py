@@ -22,17 +22,20 @@ class TestTcp(unittest.TestCase):
     self.SE.Executor.shutdown()
 
   def test_SimpleSSLSendTest(self):
-    ta = testClass(self.SE)
+    GSE = litesockets.GlobalSocketExecuter()
+    GSE2 = litesockets.GlobalSocketExecuter()
+    self.assertEquals(GSE, GSE2)
+    ta = testClass(GSE)
     server = litesockets.SSLServer("localhost", 0, certfile="%s/tmp.crt"%(DIRNAME), keyfile="%s/tmp.key"%(DIRNAME))
     server.onNew = ta.accept
     server.connect()
     PORT = server.socket.getsockname()[1]
-    self.SE.addServer(server)
+    GSE.addServer(server)
     client = litesockets.SSLClient("localhost", PORT)
-    test_client = testClass(self.SE)
+    test_client = testClass(GSE)
     client.reader = test_client.read
     client.connect()
-    self.SE.addClient(client)
+    GSE.addClient(client)
     client.addWrite(TEST_STRING)
 
     waitTill(lambda X: ta.read_len < X, len(TEST_STRING) , 500)
@@ -47,10 +50,10 @@ class TestTcp(unittest.TestCase):
 
     client.end()
     server.end()
-    waitTill(lambda X: len(self.SE.clients) > X, 0, 500)
-    waitTill(lambda X: len(self.SE.servers) > X, 0, 500)
-    self.assertEquals(len(self.SE.clients), 0)
-    self.assertEquals(len(self.SE.servers), 0)
+    waitTill(lambda X: len(GSE.clients) > X, 0, 500)
+    waitTill(lambda X: len(GSE.servers) > X, 0, 500)
+    self.assertEquals(len(GSE.clients), 0)
+    self.assertEquals(len(GSE.servers), 0)
 
 
   def test_TCPsendLots(self):
