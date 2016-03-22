@@ -5,7 +5,7 @@ class testClass():
     self.clients = list()
     self.reads = list()
     self.read_len = 0
-    self.SE = SE
+    self.__socketExecuter = SE
 
   def read(self, client):
     data = client.getRead()
@@ -16,9 +16,9 @@ class testClass():
   def accept(self, client):
     print "New client", client
     self.clients.append(client)
-    client.reader = self.read
+    client.__reader = self.read
     client.closer = self.remove
-    self.SE.addClient(client)
+    self.__socketExecuter.addClient(client)
 
   def remove(self, client):
     print "removing Client", client

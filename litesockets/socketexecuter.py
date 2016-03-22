@@ -2,6 +2,7 @@ import select, logging, threading, sys, ssl, errno, socket
 from threadly import Scheduler
 from .client import Client
 from .server import Server
+from .tcp import TCPClient, TCPServer
 
 if not "EPOLLRDHUP" in dir(select):
   select.EPOLLRDHUP = 0x2000
@@ -35,11 +36,11 @@ class SocketExecuter():
     self.running = False
     self.start()
 
-  def getScheduler():
+  def getScheduler(self):
     return self.Executor
 
   def start(self):
-    if self.running == False:
+    if not self.running:
       self.running = True
       self.log.info("Start Reader")
       T = threading.Thread(target= self._doThread, args=(self.doReads,))
@@ -66,65 +67,39 @@ class SocketExecuter():
       except Exception as e:
         self.log.error("GP Socket Exception: %s: %s"%(t, sys.exc_info()[0]))
         self.log.error(e)
+        
+  def createTCPServer(self, host, port):
+    s = TCPServer(self, host, port)
+    self.servers[s.getSocket().fileno()] = s
+    return s
 
-  def addServer(self, server):
-    if not issubclass(type(server), Server) and not issubclass(type(server), Client):
-      return
-    elif issubclass(type(server), Client):
-      self.addClient(server)
-      return
-    try:
-      FN = server.socket.fileno()
-      if FN in self.servers:
-        self.log.error("Duplicate server Add!!")
-        return
-      self.servers[FN] = server
-      server._setSocketExecuter(self)
-      self.Acceptor.register(FN, select.EPOLLIN)
+  def startServer(self, server):
+    if server.getSocket().fileno() in self.servers:
+      self.Acceptor.register(server.getSocket().fileno(), select.EPOLLIN)      
       self.log.info("Added New Server")
-    except Exception as e:
-      self.log.info("Problem adding Server: %s"%(e))
-      self.rmServer(server)
 
-  def rmServer(self, server):
-    if not issubclass(type(server), Server) and not issubclass(type(server), Client):
-      return
-    elif issubclass(type(server), Client):
-      self.rmClient(server)
-      return
-    try:
-      FN = server.socket.fileno()
-    except:
-      return
-    if FN in self.servers:
-      del self.servers[FN]
-      self.log.info("Removing Server")
-      try:
-        self.Acceptor.unregister(FN)
-      except:
-        pass
+  def stopServer(self, server):
+    if server.getSocket().fileno() in self.servers:
+      self.Acceptor.unregister(server.getSocket().fileno())
 
   def addClient(self, client):
     if not issubclass(type(client), Client):
       return
     try:
-      FN = client.socket.fileno()
-      if FN in self.clients:
-        self.log.error("Duplicate client Add!!")
-        return False
+      FN = client.getSocket().fileno()
       self.clients[FN] = client
-      client._setSocketExecuter(self)
       self.setRead(client)
       self.log.debug("Added Client")
       self.log.debug("%d"%FN)
     except Exception as e:
+      print e
       self.rmClient(client)
       return False
     return True
 
   def rmClient(self, client, FN=None):
     try:
-      FN = client.socket.fileno()
+      FN = client.getSocket().fileno()
     except:
       return
     try:
@@ -142,49 +117,48 @@ class SocketExecuter():
 
   def setRead(self, client, on=True):
     try:
-      if client.socket.fileno() not in self.clients:
+      if client.getSocket().fileno() not in self.clients:
         return
     except:
       return
     try:
-      client.readlock.acquire()
       if on:
         try:
-          self.Reader.register(client.socket.fileno(), select.EPOLLIN | select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR)
+          print "register read", client
+          self.Reader.register(client.getSocket().fileno(), select.EPOLLIN | select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR)
         except:
-          self.Reader.modify(client.socket.fileno(), select.EPOLLIN | select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR)
+          print "register read", client
+          self.Reader.modify(client.getSocket().fileno(), select.EPOLLIN | select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR)
       else:
-        self.Reader.unregister(client.socket.fileno())
+        print "unregister read", client
+        self.Reader.unregister(client.getSocket().fileno())
     except Exception as e:
       self.log.error("Problem adding Reader for client %s %s"%(e, on))
-    finally:
-      client.readlock.release()
 
   def setWrite(self, client, on=True):
     try:
-      if client.socket.fileno() not in self.clients:
+      if client.getSocket().fileno() not in self.clients:
         return
     except:
       return
     try:
-      client.writelock.acquire()
       if on:
         try:
-          self.Writer.register(client.socket.fileno(), select.EPOLLOUT)
+          self.Writer.register(client.getSocket().fileno(), select.EPOLLOUT)
         except:
-          self.Writer.modify(client.socket.fileno(), select.EPOLLOUT)
+          self.Writer.modify(client.getSocket().fileno(), select.EPOLLOUT)
       else:
-        self.Writer.modify(client.socket.fileno(), 0)
+        self.Writer.modify(client.getSocket().fileno(), 0)
     except Exception as e:
       self.log.error("Problem adding Writer %s"%(e))
-    finally:
-      client.writelock.release()
+
 
 
   def doReads(self):
     events = self.Reader.poll(10000)
     for fileno, event in events:
       read_client = self.clients[fileno]
+      print "read", read_client
       dlen = 0
       if event & select.EPOLLIN:
         dlen = self.clientRead(read_client)
@@ -194,21 +168,18 @@ class SocketExecuter():
   def clientRead(self, read_client):
     data = ""
     try:
-      if read_client.TYPE == "CUSTOM":
+      if read_client.getType() == "CUSTOM":
         data = read_client.READER()
         if data != EMPTY:
           read_client.addRead(data)
-          self.SCH(read_client.runRead, key=read_client)
-      elif read_client.socket.type == socket.SOCK_STREAM:
-        data = read_client.socket.recv(65536)
+      elif read_client.getSocket().type == socket.SOCK_STREAM:
+        data = read_client.getSocket().recv(65536)
         if data != EMPTY:
           read_client.addRead(data)
-          self.SCH(read_client.runRead, key=read_client)
-      elif read_client.socket.type == socket.SOCK_DGRAM:
-        data, addr = read_client.socket.recvfrom(65536)
+      elif read_client.getSocket().type == socket.SOCK_DGRAM:
+        data, addr = read_client.getSocket().recvfrom(65536)
         if data != EMPTY:
           read_client.addRead([addr, data])
-          self.SCH(read_client.runRead, key=read_client)
       self.stats['RB'] += len(data)
       return len(data)
     except ssl.SSLError as err:
@@ -231,15 +202,18 @@ class SocketExecuter():
     for fileno, event in events:
       if event & select.EPOLLOUT:
         CLIENT = self.clients[fileno]
+        print "write:",CLIENT.getWriteBufferSize()
         l = 0
         try:
-          if CLIENT.TYPE == "UDP":
+          if CLIENT.getType() == "UDP":
             d = CLIENT.getWrite()
-            l = CLIENT.socket.sendto(d[1], d[0])
-          elif CLIENT.TYPE == "TCP":
+            l = CLIENT.getSocket().sendto(d[1], d[0])
+          elif CLIENT.getType() == "TCP":
             #we only write 4k at a time because of some ssl problems with:
             # error:1409F07F:SSL routines:SSL3_WRITE_PENDING:bad write retry
-            l = CLIENT.socket.send(str(self.clients[fileno].getWrite())[:4096])
+            w = CLIENT.getWrite()
+            print "write:", w
+            l = CLIENT.getSocket().send(w[:4096])
             CLIENT.reduceWrite(l)
           elif self.clients[fileno].TYPE == "CUSTOM":
             l = self.clients[fileno].WRITER()
@@ -250,14 +224,13 @@ class SocketExecuter():
 
   def serverErrors(self, server, fileno):
     self.log.debug("Removeing Server %d "%(fileno))
-    self.rmServer(server)
+    self.stopServer(server)
 
 
   def clientErrors(self, client, fileno):
     self.log.debug("Removeing client %d "%(fileno))
     self.rmClient(client)
-    if client.closer != None:
-      client.closer(client)
+    client.close()
 
   def doAcceptor(self):
     events = self.Acceptor.poll(10000)
@@ -267,8 +240,5 @@ class SocketExecuter():
         self.serverErrors(SERVER, fileno)
       elif fileno in self.servers:
         self.log.debug("New Connection")
-        conn, addr = SERVER.socket.accept()
+        conn, addr = SERVER.getSocket().accept()
         SERVER.addClient(conn)
-        if SERVER.onConnect != None:
-          self.Executor.schedule(SERVER.onConnect, key=SERVER)
-

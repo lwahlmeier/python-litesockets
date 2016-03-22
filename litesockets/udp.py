@@ -1,15 +1,15 @@
 import socket, logging, struct, ssl
-from litesockets import client
+from litesockets import client, socketexecuter
 
 
-class UdpServer(client.Client):
+class UDPServer(client.Client):
   def __init__(self, ip, port):
     self.TYPE = "UDP"
     self.log = logging.getLogger("root.litesockets.UdpServer")
     self.ip = ip
     self.port = port
     self.server = self
-    self.SUPER = super(UdpServer, self)
+    self.SUPER = super(UDPServer, self)
     self.SUPER.__init__();
     self.clients = dict()
     self.onNew = None
@@ -24,11 +24,11 @@ class UdpServer(client.Client):
     if self.onNew == None:
       return
     if X[0] not in self.clients:
-      client = UdpClient(self, X[0][0], X[0][1])
+      client = UDPClient(self, X[0][0], X[0][1])
       self.onNew(client)
       self.clients[X[0]] = client
     self.clients[X[0]].addRead(X[1])
-    self.SE.Executor.schedule(self.clients[X[0]].runRead, key=self.clients[X[0]])
+    self.__socketExecuter.Executor.schedule(self.clients[X[0]].runRead, key=self.clients[X[0]])
 
   def addWrite(self, data):
     self.socket.sendto(data[1], data[0])
@@ -50,25 +50,25 @@ class UdpServer(client.Client):
 
   def addRead(self, data):
     try:
-      self.readlock.acquire()
-      self.readBuffSize += len(data[1])
-      self.read_buff.append(data)
-      if self.readBuffSize > self.MAXBUFFER:
-        self.SE.setRead(self, on=False)
+      self.__readlock.acquire()
+      self.__readBuffSize += len(data[1])
+      self.__read_buff_list.append(data)
+      if self.__readBuffSize > self.MAXBUFFER:
+        self.__socketExecuter.setRead(self, on=False)
     finally:
-      self.readlock.release()
+      self.__readlock.release()
 
   def getRead(self):
-    self.readlock.acquire()
+    self.__readlock.acquire()
     try:
-      data = self.read_buff.pop(0)
+      data = self.__read_buff_list.pop(0)
       l = len(data[1])
-      self.readBuffSize-=l
-      if (self.readBuffSize+l) >= self.MAXBUFFER and self.readBuffSize < self.MAXBUFFER:
-        self.SE.setRead(self, on=True)
+      self.__readBuffSize-=l
+      if (self.__readBuffSize+l) >= self.MAXBUFFER and self.__readBuffSize < self.MAXBUFFER:
+        self.__socketExecuter.setRead(self, on=True)
       return data
     finally:
-      self.readlock.release()
+      self.__readlock.release()
 
   def end(self):
     try:
@@ -76,40 +76,28 @@ class UdpServer(client.Client):
     except:
       pass
 
-  def mkUdpClient(self, host, port):
-      client = UdpClient(self, host, port)
+  def mkUDPClient(self, host, port):
+      client = UDPClient(self, host, port)
       self.clients[(client.host, client.port)] = client
       return client
     
 
 
-class UdpClient(client.Client):
-  def __init__(self, udpServer, host, port):
-    self.TYPE = "UDP"
-    self.host = socket.gethostbyname(host)
-    self.port = port
-    self.server = udpServer
-    self.server.clients[(self.host, self.port)] = self
-    self.log = logging.getLogger("root.litesockets.UdpClient")
-    self.SUPER = super(UdpClient, self)
-    self.SUPER.__init__()
+class UDPClient(client.Client):
+  def __init__(self, udpServer, host, port, socketExecuter):
+    self.__host = socket.gethostbyname(host)
+    self.__port = port
+    self.__server = udpServer
+    self.__server.clients[(self.host, self.port)] = self
+    self.__log = logging.getLogger("root.litesockets.UDPClient"+self.__host+":"+self.__port)
+    self.__SUPER = super(UDPClient, self)
+    self.__SUPER.__init__(socketExecuter, "UDP")
 
   def connect(self):
-    self.SUPER.connect(None, self.TYPE)
+    #noop
+    pass
 
-  def runRead(self):
-    self.SUPER.runRead()
-
-  def addWrite(self, data):
-    self.server.addWrite([(self.host, self.port), data])
-
-  def writeTry(self, data):
-    self.server.addWrite([(self.host, self.port), data])
-
-  def writeBlocking(self, data):
-    self.server.addWrite([(self.host, self.port), data])
-
-  def writeForce(self, data):
+  def write(self, data):
     self.server.addWrite([(self.host, self.port), data])
 
   def reduceWrite(self, size):
@@ -118,15 +106,6 @@ class UdpClient(client.Client):
   def getWrite(self):
     pass
 
-  def addRead(self, data):
-    self.SUPER.addRead(data)
-
-  def getRead(self):
-    return self.SUPER.getRead()
-
-  def end(self):
-    if self.created_server:
-      self.server.end()
-    else:
-      del self.server.clients[(self.host, self.port)]
+  def close(self):
+    del self.__server.clients[(self.host, self.port)]
 

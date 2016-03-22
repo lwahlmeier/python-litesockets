@@ -1,141 +1,129 @@
-import abc, logging, threading
+import threading
 
 class Client(object):
-  __metaclass__ = abc.ABCMeta
-  log = logging.getLogger("root.litesockets.Client")
 
-  def __init__(self):
+  def __init__(self, socketExecuter, TYPE):
     """Default init"""
     self.MAXBUFFER = 16384
-    self.write_buff = list()
-    self.writeBuffSize = 0
+    self.__write_buff_list = list()
+    self.__write_buff = ""
+    self.__writeBuffSize = 0
 
-    self.read_buff = list()
-    self.readBuffSize = 0
+    self.__read_buff_list = list()
+    self.__readBuffSize = 0
 
-    self.reader = None
-    self.closer = None
-    self.writelock = threading.Condition()
-    self.readlock = threading.Condition()
-    self.SE = None
-
-  @abc.abstractmethod
-  def connect(self, socket, socketType):
-    self.TYPE = socketType
-    self.socket = socket
-    return
-
+    self.__reader = None
+    self.__closers = list()
+    self.__writelock = threading.Condition()
+    self.__readlock = threading.Condition()
+    self.__socketExecuter = socketExecuter
+    self.__isClosed = False
+    self.__TYPE = TYPE
+    
   def setReader(self, reader):
-    self.reader = reader
+    self.__reader = reader
 
-  def setCloser(self, closer):
-    self.closer = closer
+  def addCloseListener(self, closer):
+    self.__closers.append(closer)
+  
+  def getType(self):
+    return self.__TYPE
+    
+  def getSocketExecuter(self):
+    return self.__socketExecuter
+  
+  def getWriteBufferSize(self):
+    return self.__writeBuffSize
+  
+  def getReadBufferSize(self):
+    return self.__readBuffSize
+  
+  def getSocket(self):
+    return None
+  
+  def runOnClientThread(self, task, args=(), kwargs={}):
+    print "run", task
+    self.__socketExecuter.getScheduler().schedule(task, key=self, args=args, kwargs=kwargs)
 
-  @abc.abstractmethod
-  def runRead(self):
-    """Called by the socket executer to complete an action once a read with data comes in"""
-    if self.reader != None:
-      self.reader(self)
-    return
-
-  @abc.abstractmethod    
   def getRead(self):
     """Called by whoever created the client to get the read... 
     this should only be called once per __doRead event.  
     This will return a string with data"""
-    self.readlock.acquire()
+    self.__readlock.acquire()
     try:
-      data = self.read_buff.pop(0)
+      data = "".join(self.__read_buff_list)
+      self.__read_buff_list = []
       l = len(data)
-      self.readBuffSize-=l
-      if (self.readBuffSize+l) >= self.MAXBUFFER and self.readBuffSize < self.MAXBUFFER:
-        self.SE.setRead(self, on=True)
+      self.__readBuffSize-=l
+      if (self.__readBuffSize+l) >= self.MAXBUFFER and self.__readBuffSize < self.MAXBUFFER:
+        self.__socketExecuter.setRead(self, on=True)
       return data
     finally:
-      self.readlock.release()
+      self.__readlock.release()
 
-  def _setSocketExecuter(self, SE):
-    self.SE = SE
-
-  @abc.abstractmethod
   def addRead(self, data):
     """This is called by the SocketExecuter once data is read off the socket"""
-    self.readlock.acquire()
+    self.__readlock.acquire()
     try:
-      self.read_buff.append(data)
-      self.readBuffSize+=len(data)
-      if self.readBuffSize > self.MAXBUFFER:
-        self.SE.setRead(self, on=False)
+      self.__read_buff_list.append(data)
+      self.__readBuffSize+=len(data)
+      if self.__readBuffSize > self.MAXBUFFER:
+        self.__socketExecuter.setRead(self, on=False)
+      if len(self.__read_buff_list) == 1:
+        print "run Read"
+        if self.__reader != None:
+          self.runOnClientThread(self.__reader, args=(self,))
     finally:
-      self.readlock.release()
+      self.__readlock.release()
 
-  @abc.abstractmethod
-  def addWrite(self, data):
-    """This will add data to be written on the socket.  Make sure this is called once with all needed data or single threaded, otherwise data might get written out of order.
-    This function will block if you are writting to fast.  It should be safe to call with the Thread you get a Read on Even if your talking to yourself (unless the SocketExecuter is limited to 1 thread)"""
-    self.writeBlocking(data)
+  def write(self, data):
+    self.__writelock.acquire()
+    self.__write_buff_list.append(data)
+    self.__writeBuffSize+=len(data)
+    self.__writelock.release()
+    self.__socketExecuter.setWrite(self, True)
 
-  @abc.abstractmethod
-  def writeBlocking(self, data):
-    self.writelock.acquire()
-    ret = self.writeTry(data)
-    while not ret :
-      self.writelock.wait()
-      ret = self.writeTry(data)
-    self.writelock.release()
-
-  @abc.abstractmethod
-  def writeTry(self, data):
-    wrote = False
-    self.writelock.acquire()
-    if self.writeBuffSize <= self.MAXBUFFER:
-      self.writeForce(data)
-      wrote = True
-    self.writelock.release()
-    return wrote
-
-  @abc.abstractmethod
-  def writeForce(self, data):
-    self.writelock.acquire()
-    self.write_buff.extend(data)
-    self.writeBuffSize+=len(data)
-    if self.writeBuffSize > 0:
-      self.SE.setWrite(self, True)
-    self.writelock.release()
-
-  @abc.abstractmethod
   def getWrite(self):
     """this is called by the SocektExecuter once addWrite has added data to write to the socket and the socket is ready to be written to.
      This does not remove any data from the writeBuffer as we will not know how much will be written yet (reduce write)"""
     #done need a lock here since we are not changing anything yet
-    return "".join(self.write_buff)
+    if self.__write_buff == "" and len(self.__write_buff_list) > 0:
+      self.__writelock.acquire()
+      try:
+        
+        self.__write_buff = "".join(self.__write_buff_list)
+      finally:
+        self.__writelock.release()
+    return self.__write_buff
 
-  @abc.abstractmethod
   def reduceWrite(self, size):
     """This is called by the SocketExecuter once data is written out to the socket to reduce the amount of data on the writeBuffer"""
-    self.writelock.acquire()
+    self.__writelock.acquire()
     try:
-      self.writeBuffSize -= size
-      while size > 0:
-        l = len(self.write_buff[0])
-        if l <= size:
-          self.write_buff.pop(0)
-          size-=l
-        else:
-          self.write_buff[0] = self.write_buff[0][size:]
-          size = 0
-
-      if self.writeBuffSize == 0:
-        self.SE.setWrite(self, on=False)
-      if self.writeBuffSize < self.MAXBUFFER:
-        self.writelock.notify()
+      print "reduce", size
+      self.__writeBuffSize -= size
+      self.__write_buff = self.__write_buff[size:]
+      if self.__writeBuffSize == 0:
+        self.__socketExecuter.setWrite(self, on=False)
+      if self.__writeBuffSize < self.MAXBUFFER:
+        self.__writelock.notify()
     finally:
-      self.writelock.release()
+      self.__writelock.release()
 
 
-  @abc.abstractmethod
-  def end(self):
+  def close(self):
     """This closes the socket and should remove the client from the SocketExecuter"""
-    self.SE.rmClient(self)
-    self.socket.close()
-  
+    self.__readlock.acquire()
+    try:
+      if  not self.__isClosed:
+        self.__isClosed = True
+        try:
+          self.__socket.close()
+        except Exception:
+          #We dont care at this point!
+          pass
+        finally:
+          for cl in self.__closers:
+            self.runOnClientThread(cl, args=(self,))
+    finally: 
+      self.__readlock.acquire()

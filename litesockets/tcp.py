@@ -1,81 +1,62 @@
-import client, socket, logging, struct, ssl
+import socket, logging, struct, ssl
+import client
 import server
 
-class TcpClient(client.Client):
-  def __init__(self, host, port):
-    self.host = host
-    self.port = port
-    self.SUPER = super(TcpClient, self)
-    self.SUPER.__init__()
-    self.log = logging.getLogger("root.litesockets.TcpClient")
-    self.TYPE = "TCP"
+class TCPClient(client.Client):
+  def __init__(self, host, port, socketExecuter, set_socket = None):
+    self.__host = host
+    self.__port = port
+    if set_socket == None:
+      self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    else:
+      self.__socket = set_socket
+    self.__SUPER = super(TCPClient, self)
+    self.__SUPER.__init__(socketExecuter, "TCP")
+    self.__log = logging.getLogger("root.litesockets.TCPClient")
+    self.__connected = False
+    self.__sslEnabled = False
+    self.__sslArgs = ((), {});
+    self.__plainSocket = self.__socket
 
   def connect(self):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    self.log.debug("connecting %s:%d"%(self.host, self.port))
-    sock.connect((self.host, self.port))
-    self.init_conn(sock)
-    self.SUPER.connect(sock, self.TYPE)
-    self.log.debug("Client Connected")
+    self.__log.debug("connecting %s:%d"%(self.__host, self.__port))
+    self.__socket.connect((self.__host, self.__port))
+    self.__socket.setblocking(0)
+    self.__socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    self.__socket.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 0, 10))
+    self.__log.debug("Client Connected")
+    self.__connected = True
+    if self.__sslEnabled:
+      self.startSSL()
+    
+  def enableSSL(self, args=(), kwargs={}):
+    self.__sslEnabled = True
+    self.__sslArgs = (args, kwargs)
+    if self.__connected:
+      self.startSSL()
+      
+  def getSocket(self):
+    return self.__socket
+    
+  def startSSL(self):
+    tmpSocket = ssl.wrap_socket(self.__plainSocket, *self.__sslArgs[0], **self.__sslArgs[1])
+    self.__socket = tmpSocket
 
-  def init_conn(self, sock):
-    sock.setblocking(0)
-    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 0, 10))
-
-  def runRead(self):
-    self.SUPER.runRead()
-
-  def getRead(self):
-    return self.SUPER.getRead()
-
-  def addRead(self, data):
-    self.SUPER.addRead(data)
-
-  def addWrite(self, data):
-    self.SUPER.addWrite(data)
-
-  def writeTry(self, data):
-    return self.SUPER.writeTry(data)
-
-  def writeBlocking(self, data):
-    self.SUPER.writeBlocking(data)
-
-  def writeForce(self, data):
-    self.SUPER.writeForce(data)
-
-  def getWrite(self):
-    return self.SUPER.getWrite()
-
-  def reduceWrite(self, size):
-    self.SUPER.reduceWrite(size)
-
-  def end(self):
-    self.SUPER.end()
-
-
-class TcpServer(server.Server):
-  def __init__(self, ip, port):
-    self.SUPER = super(TcpServer, self)
-    self.SUPER.__init__()
-    self.log = logging.getLogger("root.litesockets.TcpServer")
-    self.ip = ip
-    self.port = port
-
-  def connect(self):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind((self.ip, self.port))
-    sock.listen(500)
-    self.SUPER.connect(sock)
-
+class TCPServer(server.Server):
+  def __init__(self, socketExecuter, host, port):
+    self.__logString = "root.litesockets.TCPServer:"+host+":"+str(port)
+    self.__log = logging.getLogger()
+    self.__host = host
+    self.__port = port
+    self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    self.__socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    self.__socket.bind((self.__host, self.__port))
+    self.__socket.listen(500)
+    self.__SUPER = super(TCPServer, self)
+    self.__SUPER.__init__(socketExecuter, self.__socket, "TCP")
+    
   def addClient(self, client):
-    t = TcpClient(client.getpeername()[0], client.getpeername()[1])
-    t.socket = client
-    self.SUPER.addClient(t)
-
-  def onConnect(self):
-    self.SUPER.onConnect()
-
-  def end(self):
-    self.SUPER.end()
+    if self.getOnClient() != None:
+      tcp_client = TCPClient(client.getpeername()[0], client.getpeername()[1], self.getSocketExecuter(), set_socket = client)
+      self.getSocketExecuter().getScheduler().schedule(self.getOnClient(), args=(tcp_client,))
 

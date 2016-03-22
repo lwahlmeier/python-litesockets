@@ -15,11 +15,11 @@ log.setLevel(logging.DEBUG)
 
 class TestTcp(unittest.TestCase):
   def setUp(self):
-    self.SE = litesockets.SocketExecuter()
+    self.__socketExecuter = litesockets.SocketExecuter()
 
   def tearDown(self):
-    self.SE.stop()
-    self.SE.Executor.shutdown()
+    self.__socketExecuter.stop()
+    self.__socketExecuter.Executor.shutdown()
 
   def test_SimpleSSLSendTest(self):
     GSE = litesockets.GlobalSocketExecuter()
@@ -30,10 +30,10 @@ class TestTcp(unittest.TestCase):
     server.onNew = ta.accept
     server.connect()
     PORT = server.socket.getsockname()[1]
-    GSE.addServer(server)
+    GSE.startServer(server)
     client = litesockets.SSLClient("localhost", PORT)
     test_client = testClass(GSE)
-    client.reader = test_client.read
+    client.__reader = test_client.read
     client.connect()
     GSE.addClient(client)
     client.addWrite(TEST_STRING)
@@ -60,17 +60,17 @@ class TestTcp(unittest.TestCase):
     LOOPS = 50
     STR_SIZE = len(TEST_STRING)
     BYTES = STR_SIZE*LOOPS
-    test = testClass(self.SE)
+    test = testClass(self.__socketExecuter)
     server = litesockets.SSLServer("localhost", 0, certfile="%s/tmp.crt"%(DIRNAME), keyfile="%s/tmp.key"%(DIRNAME))
     server.onNew = test.accept
     server.connect()
     PORT = server.socket.getsockname()[1]
-    self.SE.addServer(server)
+    self.__socketExecuter.startServer(server)
     client = litesockets.SSLClient("localhost", PORT)
-    test_client = testClass(self.SE)
-    client.reader = test_client.read
+    test_client = testClass(self.__socketExecuter)
+    client.__reader = test_client.read
     client.connect()
-    self.SE.addClient(client)
+    self.__socketExecuter.addClient(client)
     baseSha = hashlib.sha256()
     for i in xrange(0, LOOPS):
       baseSha.update(TEST_STRING)

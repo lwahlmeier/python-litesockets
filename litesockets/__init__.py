@@ -1,7 +1,6 @@
 from socketexecuter import SocketExecuter
-from udp import UdpClient, UdpServer
-from tcp import TcpClient, TcpServer
-from sslSockets import SSLClient, SSLServer
+from udp import UDPClient, UDPServer
+from tcp import TCPClient, TCPServer
 from threadly import Singleton
 
 print Singleton

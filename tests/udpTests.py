@@ -16,24 +16,24 @@ log.setLevel(logging.DEBUG)
 class TestUdp(unittest.TestCase):
 
   def setUp(self):
-    self.SE = litesockets.SocketExecuter()
+    self.__socketExecuter = litesockets.SocketExecuter()
 
   def tearDown(self):
-    self.SE.stop()
-    self.SE.Executor.shutdown()
+    self.__socketExecuter.stop()
+    self.__socketExecuter.Executor.shutdown()
 
   def test_SimpleUdpSendTest(self):
-    ta = testClass(self.SE)
+    ta = testClass(self.__socketExecuter)
     server = litesockets.UdpServer("localhost", 0)
     server.onNew = ta.accept
     server.connect()
     PORT = server.socket.getsockname()[1]
-    self.SE.addClient(server)
+    self.__socketExecuter.addClient(server)
     client = litesockets.UdpServer("localhost", 0)
-    cta = testClass(self.SE)
+    cta = testClass(self.__socketExecuter)
     client.onNew = cta.accept
     client.connect()
-    self.SE.addClient(client)
+    self.__socketExecuter.addClient(client)
     client.addWrite([("localhost", PORT), TEST_STRING])
     c = 0
     while ta.read_len < len(TEST_STRING) and c < 500:
@@ -50,27 +50,27 @@ class TestUdp(unittest.TestCase):
     client.end()
     server.end()
     c = 0
-    while len(self.SE.clients) > 0 and c < 500:
+    while len(self.__socketExecuter.clients) > 0 and c < 500:
       time.sleep(.01)
       c+=1
-    self.assertEquals(len(self.SE.clients), 0)
+    self.assertEquals(len(self.__socketExecuter.clients), 0)
     
 
   def test_UdpSendLots(self):
     LOOPS = 500
     STR_SIZE = len(TEST_STRING)
     BYTES = STR_SIZE*LOOPS
-    ta = testClass(self.SE)
+    ta = testClass(self.__socketExecuter)
     server = litesockets.UdpServer("localhost", 0)
     server.onNew = ta.accept
     server.connect()
     PORT = server.socket.getsockname()[1]
-    self.SE.addClient(server)
+    self.__socketExecuter.addClient(server)
     client = litesockets.UdpServer("localhost", 0)
-    cta = testClass(self.SE)
+    cta = testClass(self.__socketExecuter)
     client.onNew = cta.accept
     client.connect()
-    self.SE.addClient(client)
+    self.__socketExecuter.addClient(client)
     baseSha = hashlib.sha256()
     for i in xrange(0, LOOPS):
       baseSha.update(TEST_STRING)
@@ -95,9 +95,9 @@ class TestUdp(unittest.TestCase):
     client.end()
     server.end()
     c = 0
-    while len(self.SE.clients) > 0 and c < 500:
+    while len(self.__socketExecuter.clients) > 0 and c < 500:
       time.sleep(.01)
       c+=1
-    self.assertEquals(len(self.SE.clients), 0)
+    self.assertEquals(len(self.__socketExecuter.clients), 0)
     
 

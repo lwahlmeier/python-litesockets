@@ -1,39 +1,46 @@
-import logging, socket
-import abc
+import socket
 
-class Server():
-  __metaclass__ = abc.ABCMeta
-  log = logging.getLogger("root.litesockets.Server")
+class Server(object):
 
-  def __init__(self):
-    self.log = logging.getLogger("root.litesockets.TcpServer")
-    self.TYPE = None
-    self.onNew = None
-    self.SE = None
-    self.socket = None
-    self.clients = list()
+  def __init__(self, socketExecuter, socket, TYPE):
+    self.__socketExecuter = socketExecuter
+    self.__TYPE = TYPE
+    self.__socket = socket
+    self.__closed = False;
+    self.__closers = list()
+    self.__acceptor = None
+    
+  def setOnClient(self, acceptor):
+    self.__acceptor = acceptor
+    
+  def getType(self):
+    return self.__TYPE
+  
+  def getSocket(self):
+    return self.__socket
 
-  def _setSocketExecuter(self, SE):
-    self.SE = SE
+  def getSocketExecuter(self):
+    return self.__socketExecuter
 
-  @abc.abstractmethod
-  def connect(self, socket):
-    self.socket = socket
+  def start(self):
+    self.__socketExecuter.startServer(self)
+    
+  def stop(self):
+    self.__socketExecuter.stopServer(self)
+    
+  def getOnClient(self):
+    return self.__acceptor
 
-  @abc.abstractmethod
+  def close(self):
+    if not self.__closed:
+      self.__closed = True
+      try:
+        self.__socketExecuter.stopServer(self)
+        self.__socket.shutdown(socket.SHUT_RDWR)
+        for cl in self.__closers:
+          self.__socketExecuter.getScheduler(cl, args=(self,))
+      except:
+        pass
+      
   def addClient(self, client):
-    self.clients.append(client)
-
-  @abc.abstractmethod
-  def onConnect(self):
-    if self.onNew != None:
-      self.onNew(self.clients.pop(0))
-
-  @abc.abstractmethod
-  def end(self):
-    try:
-      self.socket.shutdown(socket.SHUT_RDWR)
-      self.SE.rmServer(self)
-    except:
-      pass
-
+    pass
