@@ -19,7 +19,7 @@ class TestTcp(unittest.TestCase):
 
   def tearDown(self):
     self.__socketExecuter.stop()
-    self.__socketExecuter.Executor.shutdown()
+    self.__socketExecuter.__executor.shutdown()
 
   def test_SimpleSSLSendTest(self):
     GSE = litesockets.GlobalSocketExecuter()
@@ -42,7 +42,7 @@ class TestTcp(unittest.TestCase):
 
     self.assertEquals(ta.reads[0], TEST_STRING)
     ta.reads.pop(0)
-    ta.clients[0].addWrite(TEST_STRING)
+    ta.__clients[0].addWrite(TEST_STRING)
 
     waitTill(lambda X: test_client.read_len <= X, 0, 500)
 
@@ -50,10 +50,10 @@ class TestTcp(unittest.TestCase):
 
     client.end()
     server.end()
-    waitTill(lambda X: len(GSE.clients) > X, 0, 500)
-    waitTill(lambda X: len(GSE.servers) > X, 0, 500)
-    self.assertEquals(len(GSE.clients), 0)
-    self.assertEquals(len(GSE.servers), 0)
+    waitTill(lambda X: len(GSE.__clients) > X, 0, 500)
+    waitTill(lambda X: len(GSE.__servers) > X, 0, 500)
+    self.assertEquals(len(GSE.__clients), 0)
+    self.assertEquals(len(GSE.__servers), 0)
 
 
   def test_TCPsendLots(self):
@@ -81,7 +81,7 @@ class TestTcp(unittest.TestCase):
 
     self.assertEquals(test.read_len, BYTES)
     self.assertEquals(hashlib.sha256("".join(test.reads)).hexdigest(), newSha)
-    test.clients[0].addWrite("".join(test.reads))
+    test.__clients[0].addWrite("".join(test.reads))
 
     waitTill(lambda X: test_client.read_len < X, BYTES, 500)
 

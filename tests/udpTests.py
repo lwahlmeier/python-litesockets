@@ -20,7 +20,7 @@ class TestUdp(unittest.TestCase):
 
   def tearDown(self):
     self.__socketExecuter.stop()
-    self.__socketExecuter.Executor.shutdown()
+    self.__socketExecuter.__executor.shutdown()
 
   def test_SimpleUdpSendTest(self):
     ta = testClass(self.__socketExecuter)
@@ -40,8 +40,8 @@ class TestUdp(unittest.TestCase):
       time.sleep(.01)
       c+=1
     self.assertEquals(ta.reads[0], TEST_STRING)
-    self.assertEquals(len(ta.clients), 1)
-    ta.clients[0].addWrite(ta.reads[0])
+    self.assertEquals(len(ta.__clients), 1)
+    ta.__clients[0].addWrite(ta.reads[0])
     c = 0
     while cta.read_len < len(TEST_STRING) and c < 500:
       time.sleep(.01)
@@ -50,10 +50,10 @@ class TestUdp(unittest.TestCase):
     client.end()
     server.end()
     c = 0
-    while len(self.__socketExecuter.clients) > 0 and c < 500:
+    while len(self.__socketExecuter.__clients) > 0 and c < 500:
       time.sleep(.01)
       c+=1
-    self.assertEquals(len(self.__socketExecuter.clients), 0)
+    self.assertEquals(len(self.__socketExecuter.__clients), 0)
     
 
   def test_UdpSendLots(self):
@@ -85,7 +85,7 @@ class TestUdp(unittest.TestCase):
     self.assertEquals(ta.read_len, BYTES)
     X = "".join(ta.reads)
     while len(X) > 0:
-      ta.clients[0].addWrite(X[:1000])
+      ta.__clients[0].addWrite(X[:1000])
       X=X[1000:]
     c = 0
     while cta.read_len < BYTES and c < 500:
@@ -95,9 +95,9 @@ class TestUdp(unittest.TestCase):
     client.end()
     server.end()
     c = 0
-    while len(self.__socketExecuter.clients) > 0 and c < 500:
+    while len(self.__socketExecuter.__clients) > 0 and c < 500:
       time.sleep(.01)
       c+=1
-    self.assertEquals(len(self.__socketExecuter.clients), 0)
+    self.assertEquals(len(self.__socketExecuter.__clients), 0)
     
 

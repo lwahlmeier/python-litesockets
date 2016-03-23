@@ -1,46 +1,27 @@
-import socket, logging, struct, ssl
-from litesockets import client, socketexecuter
+import socket, logging
+from .client import Client
 
 
-class UDPServer(client.Client):
-  def __init__(self, ip, port):
-    self.TYPE = "UDP"
-    self.log = logging.getLogger("root.litesockets.UdpServer")
-    self.ip = ip
-    self.port = port
-    self.server = self
-    self.SUPER = super(UDPServer, self)
-    self.SUPER.__init__();
-    self.clients = dict()
-    self.onNew = None
+class UDPServer(Client):
+  def __init__(self, host, port, socketExecuter):
+    self.__log = logging.getLogger("root.litesockets.UDPServer:"+host+":"+str(port))
+    self.__host = host
+    self.__port = port
+    self.__clients = dict()
+    self.__socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    self.__socket.bind((self.ip, self.port))
+    self.__SUPER = super(UDPServer, self, self.__socket)
+    self.__SUPER.__init__(socketExecuter, "UDP", self.__socket);
+    self.addCloseListener(self.__closeClients)
 
-  def connect(self):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind((self.ip, self.port))
-    self.SUPER.connect(sock, self.TYPE)
+  def start(self):
+    self.__socketExecuter.startServer(self)
+    
+  def stop(self):
+    self.__socketExecuter.stopServer(self)
 
-  def runRead(self):
-    X = self.getRead()
-    if self.onNew == None:
-      return
-    if X[0] not in self.clients:
-      client = UDPClient(self, X[0][0], X[0][1])
-      self.onNew(client)
-      self.clients[X[0]] = client
-    self.clients[X[0]].addRead(X[1])
-    self.__socketExecuter.Executor.schedule(self.clients[X[0]].runRead, key=self.clients[X[0]])
-
-  def addWrite(self, data):
-    self.socket.sendto(data[1], data[0])
-
-  def writeTry(self, data):
-    self.socket.sendto(data[1], data[0])
-
-  def writeBlocking(self, data):
-    self.socket.sendto(data[1], data[0])
-
-  def writeForce(self, data):
-    self.socket.sendto(data[1], data[0])
+  def write(self, data):
+    self.__socket.sendto(data[1], data[0])
 
   def getWrite(self):
     pass
@@ -49,46 +30,39 @@ class UDPServer(client.Client):
     pass
 
   def addRead(self, data):
-    try:
-      self.__readlock.acquire()
-      self.__readBuffSize += len(data[1])
-      self.__read_buff_list.append(data)
-      if self.__readBuffSize > self.MAXBUFFER:
-        self.__socketExecuter.setRead(self, on=False)
-    finally:
-      self.__readlock.release()
+    ipp = data[0]
+    if ipp not in self.__clients:
+      udpc = UDPClient(self, self.__ip, self.__port, self.__socketExecuter)
+      self.__clients[ipp] = udpc
+      if self.__acceptor != None: 
+        self.__socketExecuter.getSocketExecuter().execute(self.__acceptor, args=(udpc,))
+    udpc = self.__clients[ipp]
+    if udpc.getReadBufferSize() < udpc.MAXBUFFER:
+      udpc.addRead(data[1])
 
   def getRead(self):
-    self.__readlock.acquire()
-    try:
-      data = self.__read_buff_list.pop(0)
-      l = len(data[1])
-      self.__readBuffSize-=l
-      if (self.__readBuffSize+l) >= self.MAXBUFFER and self.__readBuffSize < self.MAXBUFFER:
-        self.__socketExecuter.setRead(self, on=True)
-      return data
-    finally:
-      self.__readlock.release()
+    pass
 
-  def end(self):
-    try:
-      self.socket.shutdown(socket.SHUT_RDWR)
-    except:
-      pass
+  def removeUDPClient(self, client):
+    del self.__clients[client.getAddress()]
 
-  def mkUDPClient(self, host, port):
-      client = UDPClient(self, host, port)
-      self.clients[(client.host, client.port)] = client
-      return client
+  def createUDPClient(self, host, port):
+    client = UDPClient(self, host, port)
+    self.__clients[(client.host, client.port)] = client
+    return client
+    
+  def __closeClients(self):
+    for client in self.__clients:
+      client.close()
     
 
 
-class UDPClient(client.Client):
+class UDPClient(Client):
   def __init__(self, udpServer, host, port, socketExecuter):
     self.__host = socket.gethostbyname(host)
     self.__port = port
     self.__server = udpServer
-    self.__server.clients[(self.host, self.port)] = self
+    self.__server.__clients[(self.host, self.port)] = self
     self.__log = logging.getLogger("root.litesockets.UDPClient"+self.__host+":"+self.__port)
     self.__SUPER = super(UDPClient, self)
     self.__SUPER.__init__(socketExecuter, "UDP")
@@ -105,7 +79,10 @@ class UDPClient(client.Client):
 
   def getWrite(self):
     pass
+  
+  def getAddress(self):
+    return (self.__host, self.__port)
 
   def close(self):
-    del self.__server.clients[(self.host, self.port)]
+    self.__server.removeUDPClient(self)
 

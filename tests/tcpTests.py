@@ -20,7 +20,7 @@ class TestTcp(unittest.TestCase):
 
   def tearDown(self):
     self.__socketExecuter.stop()
-    self.__socketExecuter.Executor.shutdown()
+    self.__socketExecuter.__executor.shutdown()
 
   def test_SimpleTcpSendTest(self):
     test = testClass(self.__socketExecuter)
@@ -40,7 +40,7 @@ class TestTcp(unittest.TestCase):
 
     self.assertEquals(test.reads[0], TEST_STRING)
     test.reads.pop(0)
-    test.clients[0].addWrite(TEST_STRING)
+    test.__clients[0].addWrite(TEST_STRING)
 
     waitTill(lambda X: test_client.read_len <= X, 0, 500)
 
@@ -48,11 +48,11 @@ class TestTcp(unittest.TestCase):
     client.end()
     server.end()
 
-    waitTill(lambda X: len(self.__socketExecuter.clients) > X, 0, 500)
-    waitTill(lambda X: len(self.__socketExecuter.servers) > X, 0, 500)
+    waitTill(lambda X: len(self.__socketExecuter.__clients) > X, 0, 500)
+    waitTill(lambda X: len(self.__socketExecuter.__servers) > X, 0, 500)
 
-    self.assertEquals(len(self.__socketExecuter.clients), 0)
-    self.assertEquals(len(self.__socketExecuter.servers), 0)
+    self.assertEquals(len(self.__socketExecuter.__clients), 0)
+    self.assertEquals(len(self.__socketExecuter.__servers), 0)
 
 
   def test_TCPsendLots(self):
@@ -80,7 +80,7 @@ class TestTcp(unittest.TestCase):
 
     self.assertEquals(test.read_len, BYTES)
     self.assertEquals(hashlib.sha256("".join(test.reads)).hexdigest(), newSha)
-    test.clients[0].addWrite("".join(test.reads))
+    test.__clients[0].addWrite("".join(test.reads))
 
     waitTill(lambda X: test_client.read_len < X, BYTES, 500)
 

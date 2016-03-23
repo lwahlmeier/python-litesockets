@@ -3,16 +3,16 @@ import client
 import server
 
 class TCPClient(client.Client):
-  def __init__(self, host, port, socketExecuter, set_socket = None):
+  def __init__(self, host, port, socketExecuter, use_socket = None):
     self.__host = host
     self.__port = port
-    if set_socket == None:
+    if use_socket == None:
       self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     else:
-      self.__socket = set_socket
+      self.__socket = use_socket
     self.__SUPER = super(TCPClient, self)
-    self.__SUPER.__init__(socketExecuter, "TCP")
-    self.__log = logging.getLogger("root.litesockets.TCPClient")
+    self.__SUPER.__init__(socketExecuter, "TCP", self.__socket)
+    self.__log = logging.getLogger("root.litesockets.TCPClient:"+self.__host+":"+str(self.__port))
     self.__connected = False
     self.__sslEnabled = False
     self.__sslArgs = ((), {});
@@ -34,9 +34,6 @@ class TCPClient(client.Client):
     self.__sslArgs = (args, kwargs)
     if self.__connected:
       self.startSSL()
-      
-  def getSocket(self):
-    return self.__socket
     
   def startSSL(self):
     tmpSocket = ssl.wrap_socket(self.__plainSocket, *self.__sslArgs[0], **self.__sslArgs[1])

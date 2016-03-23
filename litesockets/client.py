@@ -2,7 +2,7 @@ import threading
 
 class Client(object):
 
-  def __init__(self, socketExecuter, TYPE):
+  def __init__(self, socketExecuter, TYPE, socket):
     """Default init"""
     self.MAXBUFFER = 16384
     self.__write_buff_list = list()
@@ -19,6 +19,7 @@ class Client(object):
     self.__socketExecuter = socketExecuter
     self.__isClosed = False
     self.__TYPE = TYPE
+    self.__socket = socket
     
   def setReader(self, reader):
     self.__reader = reader
@@ -39,7 +40,7 @@ class Client(object):
     return self.__readBuffSize
   
   def getSocket(self):
-    return None
+    return self.__socket
   
   def runOnClientThread(self, task, args=(), kwargs={}):
     print "run", task
