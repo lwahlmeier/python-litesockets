@@ -1,32 +1,32 @@
 import time
 
 class testClass():
-  def __init__(self, SE):
-    self.__clients = list()
+  def __init__(self, SE, name="MAIN"):
+    self.clients = list()
+    self.name =name
     self.reads = list()
     self.read_len = 0
-    self.__socketExecuter = SE
+    self.socketExecuter = SE
 
   def read(self, client):
     data = client.getRead()
-    #print "read Data", len(data)
+    print self.name+":read Data", len(data)
     self.reads.append(data)
     self.read_len+=len(data)
 
   def accept(self, client):
     print "New client", client
-    self.__clients.append(client)
-    client.__reader = self.read
-    client.closer = self.remove
-    self.__socketExecuter.addClient(client)
+    self.clients.append(client)
+    client.setReader(self.read)
+    client.addCloseListener(self.remove)
+    self.socketExecuter.addClient(client)
 
   def remove(self, client):
-    print "removing Client", client
     try:
-      self.__clients.pop(self.__clients.index(client))
+      self.clients.pop(self.clients.index(client))
     except Exception as e:
       print "client not in list", e
-      print self.__clients
+      print self.clients
 
 
 def waitTill(F, V, T):

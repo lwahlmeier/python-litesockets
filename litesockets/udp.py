@@ -4,23 +4,32 @@ from .client import Client
 
 class UDPServer(Client):
   def __init__(self, host, port, socketExecuter):
-    self.__log = logging.getLogger("root.litesockets.UDPServer:"+host+":"+str(port))
     self.__host = host
-    self.__port = port
-    self.__clients = dict()
     self.__socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    self.__socket.bind((self.ip, self.port))
-    self.__SUPER = super(UDPServer, self, self.__socket)
+    self.__socket.bind((self.__host, port))
+    self.__port = self.__socket.getsockname()[1]
+    self.__log = logging.getLogger("root.litesockets.UDPServer:"+self.__host+":"+str(self.__port))
+    self.__clients = dict()
+    self.__socket.setblocking(False)
+    self.__SUPER = super(UDPServer, self)
     self.__SUPER.__init__(socketExecuter, "UDP", self.__socket);
+    self.__acceptor = None
     self.addCloseListener(self.__closeClients)
 
   def start(self):
-    self.__socketExecuter.startServer(self)
+    self.getSocketExecuter().addClient(self)
     
   def stop(self):
-    self.__socketExecuter.stopServer(self)
+    self.getSocketExecuter().rmClient(self)
+    
+  def setOnClient(self, acceptor):
+    self.__acceptor = acceptor
+    
+  def connect(self):
+    pass
 
   def write(self, data):
+    print "----DATA:",data
     self.__socket.sendto(data[1], data[0])
 
   def getWrite(self):
@@ -32,10 +41,10 @@ class UDPServer(Client):
   def addRead(self, data):
     ipp = data[0]
     if ipp not in self.__clients:
-      udpc = UDPClient(self, self.__ip, self.__port, self.__socketExecuter)
+      udpc = UDPClient(self, ipp[0], ipp[1], self.getSocketExecuter())
       self.__clients[ipp] = udpc
       if self.__acceptor != None: 
-        self.__socketExecuter.getSocketExecuter().execute(self.__acceptor, args=(udpc,))
+        self.getSocketExecuter().getScheduler().execute(self.__acceptor, args=(udpc,))
     udpc = self.__clients[ipp]
     if udpc.getReadBufferSize() < udpc.MAXBUFFER:
       udpc.addRead(data[1])
@@ -51,9 +60,12 @@ class UDPServer(Client):
     self.__clients[(client.host, client.port)] = client
     return client
     
-  def __closeClients(self):
-    for client in self.__clients:
-      client.close()
+  def __closeClients(self, us):
+    ld = self.__clients.copy()
+    for client in ld:
+      print "0000000000:",ld[client], client
+      ld[client].close()
+      print "1111111:CLOSED"
     
 
 
@@ -62,17 +74,16 @@ class UDPClient(Client):
     self.__host = socket.gethostbyname(host)
     self.__port = port
     self.__server = udpServer
-    self.__server.__clients[(self.host, self.port)] = self
-    self.__log = logging.getLogger("root.litesockets.UDPClient"+self.__host+":"+self.__port)
+    self.__log = logging.getLogger("root.litesockets.UDPClient"+self.__host+":"+str(self.__port))
     self.__SUPER = super(UDPClient, self)
-    self.__SUPER.__init__(socketExecuter, "UDP")
+    self.__SUPER.__init__(socketExecuter, "UDP", None)
 
   def connect(self):
     #noop
     pass
 
   def write(self, data):
-    self.server.addWrite([(self.host, self.port), data])
+    self.__server.write([(self.__host, self.__port), data])
 
   def reduceWrite(self, size):
     pass
@@ -84,5 +95,8 @@ class UDPClient(Client):
     return (self.__host, self.__port)
 
   def close(self):
+    print "222222:Start Close"
     self.__server.removeUDPClient(self)
+    self.__SUPER.close()
+    print "33333333:finish Close"
 

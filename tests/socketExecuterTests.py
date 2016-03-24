@@ -1,5 +1,6 @@
 import unittest, time, hashlib, logging
 import litesockets
+from threadly import Scheduler
 from utils import testClass
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(name)s - %(message)s")
@@ -10,65 +11,56 @@ log.setLevel(logging.DEBUG)
 class TestSE(unittest.TestCase):
 
   def test_SE_ServerStartMany(self):
-    SE = litesockets.SocketExecuter()
-    SE.start()
+    sch = Scheduler(10)
+    SE = litesockets.SocketExecuter(executor=sch)
     SE1 = litesockets.SocketExecuter()
+    self.assertTrue(SE.isRunning(), "SE not running")
+    self.assertTrue(SE1.isRunning(), "SE1 not running")
     SE.stop()
-    __socketExecuter.__executor.shutdown()
     SE1.stop()
-    SE1.__executor.shutdown()
+    self.assertFalse(SE.isRunning(), "SE not running")
+    self.assertFalse(SE1.isRunning(), "SE1 not running")
+    sch.shutdown_now()
 
   def test_SE_ClientAddRemove(self):
     CLIENT_NUM = 5
     SE = litesockets.SocketExecuter()
     ta = testClass(SE)
-    server = litesockets.TcpServer("localhost", 0)
-    server.onNew = ta.accept
-    server.connect()
-    PORT = server.socket.getsockname()[1]
-    SE.startServer(server)
+    server = SE.createTCPServer("localhost", 0)
+    server.setOnClient(ta.accept)
+    PORT = server.getSocket().getsockname()[1]
+    server.start()
     clients = list()
 
     for i in xrange(CLIENT_NUM):
-      client = litesockets.TcpClient("localhost", PORT)
+      print PORT, type(PORT)
+      client = SE.createTCPClient("localhost", PORT)
       client.connect()
-      time.sleep(.1)
-      self.assertEquals(len(SE.__clients), (i+1)+len(clients))
-      SE.addClient(client)
+      for i in xrange(500):
+        if(len(SE.getClients()) == (len(clients)*2)+2):
+          break
+        else:
+          time.sleep(.01)
+      self.assertEquals(len(SE.getClients()), (len(clients)*2)+2)
       clients.append(client)
-      self.assertEquals(len(SE.__clients), len(clients)*2)
+      self.assertEquals(len(SE.getClients()), len(clients)*2)
 
     for i in xrange(CLIENT_NUM):
-      SE.rmClient(clients[i])
-      self.assertEquals(len(SE.__clients), (len(clients)*2)-(i+1))
-
-    for i in xrange(CLIENT_NUM):
-      SE.rmClient(clients[i])
-      self.assertEquals(len(SE.__clients), (CLIENT_NUM))
-
-    for i in xrange(CLIENT_NUM):
-      SE.addClient(clients[i])
-      self.assertEquals(len(SE.__clients), (CLIENT_NUM)+(i+1))
-
-    for i in xrange(CLIENT_NUM):
-      SE.addClient(clients[i])
-      self.assertEquals(len(SE.__clients), (CLIENT_NUM*2))
-
-    for i in xrange(CLIENT_NUM):
-      clients[i].end()
-      while len(SE.__clients) > (CLIENT_NUM*2)-((i+1)*2):
-        time.sleep(.01)
-      self.assertEquals(len(SE.__clients), (CLIENT_NUM*2)-((i+1)*2))
-    self.assertEquals(len(SE.__clients), 0)
+      clients[i].close()
+      for Q in xrange(500):
+        print len(SE.getClients()), (CLIENT_NUM*2)-((i+1)*2)
+        if len(SE.getClients()) == (CLIENT_NUM*2)-((i+1)*2):
+          break
+        else:
+          time.sleep(.1)
+          
+      self.assertEquals(len(SE.getClients()), (CLIENT_NUM*2)-((i+1)*2))
+    self.assertEquals(len(SE.getClients()), 0)
 
     for i in xrange(CLIENT_NUM):
       SE.addClient(clients[i])
-      self.assertEquals(len(SE.__clients), 0)
-
-    SE.addClient("TEST")
-    self.assertEquals(len(SE.__clients), 0)
+      self.assertEquals(len(SE.getClients()), 0)
     SE.stop()
-    __socketExecuter.__executor.shutdown()
 
 
   def test_SE_ServerAddRemove(self):
@@ -78,82 +70,62 @@ class TestSE(unittest.TestCase):
     servers = list()
     for i in xrange(SERVER_NUM):
       ta = testClass(SE)
-      server = litesockets.TcpServer("localhost", 0)
-      server.onNew = ta.accept
-      server.connect()
-      SE.startServer(server)
+      server = SE.createTCPServer("localhost", 0)
+      server.setOnClient(ta.accept)
+      server.start()
       testA.append(ta)
       servers.append(server)
-      self.assertEquals(len(SE.__servers), i+1)
+      self.assertEquals(len(SE.getServers()), i+1)
 
     for i in xrange(SERVER_NUM):
-      SE.stopServer(servers[i])
-      self.assertEquals(len(SE.__servers), len(servers)-(i+1))
-
-    for i in xrange(SERVER_NUM):
-      SE.stopServer(servers[i])
-      self.assertEquals(len(SE.__servers), 0)
-
-    for i in xrange(SERVER_NUM):
-      SE.startServer(servers[i])
-      self.assertEquals(len(SE.__servers), i+1)
-    
-    for i in xrange(SERVER_NUM):
-      SE.startServer(servers[i])
-      self.assertEquals(len(SE.__servers), len(servers))
-
-    for i in xrange(SERVER_NUM):
-      servers[i].end()
+      servers[i].close()
       c = 0
-      while len(SE.__servers) > len(servers)-(i+1) or c > 500:
+      while len(SE.getServers()) > len(servers)-(i+1) or c > 500:
+        print len(SE.getServers()), len(servers)-(i+1)
         time.sleep(.01)
         c+=1
-      self.assertEquals(len(SE.__servers), len(servers)-(i+1))
+      self.assertEquals(len(SE.getServers()), len(servers)-(i+1))
 
-    for i in xrange(SERVER_NUM):
-      SE.startServer(servers[i])
     c = 0
-    while len(SE.__servers) > 0 or c > 500:
+    while len(SE.getServers()) > 0 or c > 500:
       time.sleep(.01)
       c+=1
-    self.assertEquals(len(SE.__servers), 0)
-
+    self.assertEquals(len(SE.getServers()), 0)
     SE.startServer("TEST")
-    self.assertEquals(len(SE.__servers), 0)
+    self.assertEquals(len(SE.getServers()), 0)
     SE.stop()
-    __socketExecuter.__executor.shutdown()
 
 
   def test_SE_ClientMaxReads(self):
     SE = litesockets.SocketExecuter()
     ta = testClass(SE)
-    server = litesockets.TcpServer("localhost", 0)
-    server.onNew = ta.accept
-    server.connect()
-    PORT = server.socket.getsockname()[1]
-    SE.startServer(server)
-    client = litesockets.TcpClient("localhost", PORT)
+    server = SE.createTCPServer("localhost", 0)
+    server.setOnClient(ta.accept)
+    server.start()
+    PORT = server.getSocket().getsockname()[1]
+    client = SE.createTCPClient("localhost", PORT)
     client.MAXBUFFER = 1
     cta = testClass(SE)
-    client.__reader = cta.read
+    client.setReader(cta.read)
     client.connect()
     SE.addClient(client)
     c = 0
-    while len(ta.__clients) <= 0 and c < 500:
+    while len(ta.clients) <= 0 and c < 500:
       time.sleep(.01)
       c+=1
-    self.assertEquals(len(ta.__clients), 1)
-    ta.__clients[0].MAXBUFFER=20
+    self.assertEquals(len(ta.clients), 1)
+    ta.clients[0].MAXBUFFER=20
     for i in xrange(20):
       print "write", 1
-      ta.__clients[0].addWrite("T"*10)
+      ta.clients[0].write("T"*10)
     c = 0
     while cta.read_len < 200 and c < 500:
+      print "waiting", cta.read_len
       time.sleep(.01)
       c+=1
     self.assertEquals(cta.read_len, 200)
     SE.stop()
-    __socketExecuter.__executor.shutdown()
+
 
 if __name__ == '__main__':
   unittest.main()

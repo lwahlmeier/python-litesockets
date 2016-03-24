@@ -16,71 +16,70 @@ log.setLevel(logging.DEBUG)
 
 class TestTcp(unittest.TestCase):
   def setUp(self):
-    self.__socketExecuter = litesockets.SocketExecuter()
+    self.socketExecuter = litesockets.SocketExecuter()
 
   def tearDown(self):
-    self.__socketExecuter.stop()
-    self.__socketExecuter.__executor.shutdown()
+    self.socketExecuter.stop()
 
   def test_SimpleTcpSendTest(self):
-    test = testClass(self.__socketExecuter)
-    server = litesockets.TcpServer("localhost", 0)
-    server.onNew = test.accept
-    server.connect()
-    PORT = server.socket.getsockname()[1]
-    self.__socketExecuter.startServer(server)
-    client = litesockets.TcpClient("localhost", PORT)
-    test_client = testClass(self.__socketExecuter)
+    test = testClass(self.socketExecuter)
+    server = self.socketExecuter.createTCPServer("localhost", 0)
+    server.setOnClient(test.accept)
+    server.start()
+    PORT = server.getSocket().getsockname()[1]
+
+    client = self.socketExecuter.createTCPClient("localhost", PORT)
+    test_client = testClass(self.socketExecuter)
     client.setReader(test_client.read)
     client.connect()
-    self.__socketExecuter.addClient(client)
-    client.addWrite(TEST_STRING)
+    self.socketExecuter.addClient(client)
+    client.write(TEST_STRING)
 
     waitTill(lambda X: test.read_len < X, len(TEST_STRING) , 500)
 
     self.assertEquals(test.reads[0], TEST_STRING)
     test.reads.pop(0)
-    test.__clients[0].addWrite(TEST_STRING)
+    test.clients[0].write(TEST_STRING)
 
     waitTill(lambda X: test_client.read_len <= X, 0, 500)
 
     self.assertEquals(test_client.reads[0], TEST_STRING)
-    client.end()
-    server.end()
+    client.close()
+    server.close()
 
-    waitTill(lambda X: len(self.__socketExecuter.__clients) > X, 0, 500)
-    waitTill(lambda X: len(self.__socketExecuter.__servers) > X, 0, 500)
+    waitTill(lambda X: len(self.socketExecuter.getClients()) > X, 0, 500)
+    waitTill(lambda X: len(self.socketExecuter.getServers()) > X, 0, 500)
 
-    self.assertEquals(len(self.__socketExecuter.__clients), 0)
-    self.assertEquals(len(self.__socketExecuter.__servers), 0)
+    self.assertEquals(len(self.socketExecuter.getClients()), 0)
+    self.assertEquals(len(self.socketExecuter.getServers()), 0)
 
 
   def test_TCPsendLots(self):
     LOOPS = 50
     STR_SIZE = len(TEST_STRING)
     BYTES = STR_SIZE*LOOPS
-    test = testClass(self.__socketExecuter)
-    server = litesockets.TcpServer("localhost", 0)
-    server.onNew = test.accept
-    server.connect()
-    PORT = server.socket.getsockname()[1]
-    self.__socketExecuter.startServer(server)
-    client = litesockets.TcpClient("localhost", PORT)
-    test_client = testClass(self.__socketExecuter)
-    client.__reader = test_client.read
+    test = testClass(self.socketExecuter)
+    server = self.socketExecuter.createTCPServer("localhost", 0)
+    server.setOnClient(test.accept)
+    server.start()
+    PORT = server.getSocket().getsockname()[1]
+
+    client = self.socketExecuter.createTCPClient("localhost", PORT)
+    test_client = testClass(self.socketExecuter)
+    client.setReader(test_client.read)
     client.connect()
-    self.__socketExecuter.addClient(client)
+    self.socketExecuter.addClient(client)
     baseSha = hashlib.sha256()
     for i in xrange(0, LOOPS):
       baseSha.update(TEST_STRING)
-      client.addWrite(TEST_STRING)
+      client.write(TEST_STRING)
     newSha = baseSha.hexdigest()
 
     waitTill(lambda X: test.read_len < X, BYTES, 500)
 
     self.assertEquals(test.read_len, BYTES)
     self.assertEquals(hashlib.sha256("".join(test.reads)).hexdigest(), newSha)
-    test.__clients[0].addWrite("".join(test.reads))
+    test.clients[0].write("".join(test.reads))
 
     waitTill(lambda X: test_client.read_len < X, BYTES, 500)
 

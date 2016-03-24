@@ -3,11 +3,12 @@ from threadly import Scheduler
 from .client import Client
 from .server import Server
 from .tcp import TCPClient, TCPServer
+from .udp import UDPServer
 
 if not "EPOLLRDHUP" in dir(select):
   select.EPOLLRDHUP = 0x2000
 
-EMPTY = ""
+EMPTY_STRING = ""
 
 class SocketExecuter():
   """
@@ -20,13 +21,16 @@ class SocketExecuter():
   def __init__(self, threads=5, executor=None):
     self.log = logging.getLogger("root.litesockets.SocketExecuter")
     self.__DEFAULT_READ_POLLS = select.EPOLLIN|select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR
+    self.__DEFAULT_ACCEPT_POLLS = select.EPOLLIN|select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR
     self.__clients = dict()
     self.__servers = dict()
     self.__ReadSelector = select.epoll()
     self.__WriteSelector = select.epoll()
     self.__AcceptorSelector = select.epoll()
+    self.__internalExec = None
     if executor == None:
       self.__executor = Scheduler(threads)
+      self.__internalExec = self.__executor 
     else:
       self.__executor = executor
     self.__stats = dict()
@@ -58,6 +62,17 @@ class SocketExecuter():
 
   def stop(self):
     self.__running = False
+    if self.__internalExec != None:
+      self.__internalExec.shutdown_now()
+      
+  def isRunning(self):
+    return self.__running
+  
+  def getClients(self):
+    return list(self.__clients.values())
+  
+  def getServers(self):
+    return list(self.__servers.values())
 
   def __doThread(self, t):
     while self.__running:
@@ -66,32 +81,46 @@ class SocketExecuter():
       except Exception as e:
         self.log.error("GP Socket Exception: %s: %s"%(t, sys.exc_info()[0]))
         self.log.error(e)
+        
+  def createUDPServer(self, host, port):
+    us = UDPServer(host, port, self)
+    FN = us.getFileDesc()
+    self.__clients[FN] = us
+    us.addCloseListener(self.__closeClient)
+    return us
   
   def createTCPClient(self, host, port, use_socket = None):
-    c = TCPClient(self, host, port, use_socket=use_socket)
+    c = TCPClient(host, port, self, use_socket=use_socket)
     self.__clients[c.getSocket().fileno()] = c
+    c.addCloseListener(self.__closeClient)
     return c
         
   def createTCPServer(self, host, port):
     s = TCPServer(self, host, port)
     self.__servers[s.getSocket().fileno()] = s
+    s.addCloseListener(self.__closeServer)
     return s
 
   def startServer(self, server):
-    if server.getSocket().fileno() in self.__servers:
-      self.__AcceptorSelector.register(server.getSocket().fileno(), select.EPOLLIN)      
+    if isinstance(server, Server) and server.getSocket().fileno() in self.__servers:
+      self.__AcceptorSelector.register(server.getSocket().fileno(), self.__DEFAULT_ACCEPT_POLLS)      
       self.log.info("Added New Server")
 
   def stopServer(self, server):
-    if server.getSocket().fileno() in self.__servers:
-      self.__AcceptorSelector.unregister(server.getSocket().fileno())
+    if isinstance(server, Server) and server.getSocket().fileno() in self.__servers:
+      try:
+        self.__AcceptorSelector.unregister(server.getSocket().fileno())
+      except:
+        pass
 
   def addClient(self, client):
-    if client.getSocket().fileno() in self.__clients:
+    if isinstance(client, Client) and client.getFileDesc() in self.__clients:
       self.setRead(client)
 
   def rmClient(self, client):
-    FN = client.getSocket().fileno()
+    if not isinstance(client, Client):
+      return 
+    FN = client.getFileDesc()
     if FN in self.__clients:
       try:
         self.__ReadSelector.unregister(FN)
@@ -101,7 +130,6 @@ class SocketExecuter():
         self.__WriteSelector.unregister(FN)
       except:
         pass
-      del self.__clients[FN]
 
   def setRead(self, client, on=True):
     try:
@@ -113,10 +141,10 @@ class SocketExecuter():
       if on:
         try:
           print "register read", client
-          self.__ReadSelector.register(client.getSocket().fileno(), select.EPOLLIN | select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR)
+          self.__ReadSelector.register(client.getSocket().fileno(), self.__DEFAULT_READ_POLLS)
         except:
           print "register read", client
-          self.__ReadSelector.modify(client.getSocket().fileno(), select.EPOLLIN | select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR)
+          self.__ReadSelector.modify(client.getSocket().fileno(), self.__DEFAULT_READ_POLLS)
       else:
         print "unregister read", client
         self.__ReadSelector.unregister(client.getSocket().fileno())
@@ -151,22 +179,22 @@ class SocketExecuter():
       if event & select.EPOLLIN:
         dlen = self.__clientRead(read_client)
       if dlen == 0 and (event & select.EPOLLRDHUP or event & select.EPOLLHUP or event & select.EPOLLERR):
-        self.clientErrors(read_client, fileno)
+        self.__clientErrors(read_client, fileno)
 
   def __clientRead(self, read_client):
-    data = EMPTY
+    data = EMPTY_STRING
     try:
       if read_client.getType() == "CUSTOM":
         data = read_client.READER()
-        if data != EMPTY:
+        if data != EMPTY_STRING:
           read_client.addRead(data)
       elif read_client.getSocket().type == socket.SOCK_STREAM:
         data = read_client.getSocket().recv(65536)
-        if data != EMPTY:
+        if data != EMPTY_STRING:
           read_client.addRead(data)
       elif read_client.getSocket().type == socket.SOCK_DGRAM:
         data, addr = read_client.getSocket().recvfrom(65536)
-        if data != EMPTY:
+        if data != EMPTY_STRING:
           read_client.addRead([addr, data])
       self.__stats['RB'] += len(data)
       return len(data)
@@ -210,12 +238,12 @@ class SocketExecuter():
           self.log.debug("Write Error: %s"%(sys.exc_info()[0]))
           self.log.debug(e)
 
-  def serverErrors(self, server, fileno):
+  def __serverErrors(self, server, fileno):
     self.log.debug("Removeing Server %d "%(fileno))
-    self.stopServer(server)
-
-
-  def clientErrors(self, client, fileno):
+    self.__AcceptorSelector.unregister(fileno)
+    server.close()
+    
+  def __clientErrors(self, client, fileno):
     self.log.debug("Removeing client %d "%(fileno))
     self.rmClient(client)
     client.close()
@@ -225,8 +253,19 @@ class SocketExecuter():
     for fileno, event in events:
       SERVER = self.__servers[fileno]
       if event & select.EPOLLRDHUP or event & select.EPOLLHUP or event & select.EPOLLERR:
-        self.serverErrors(SERVER, fileno)
+        self.__serverErrors(SERVER, fileno)
       elif fileno in self.__servers:
         self.log.debug("New Connection")
         conn, addr = SERVER.getSocket().accept()
         SERVER.addClient(conn)
+  
+  def __closeClient(self, client):
+    #self.log("----GOT CLOSE: client" +""+str(client.getFileDesc())) 
+    self.rmClient(client)
+    if client.getFileDesc() in self.__clients:
+      del self.__clients[client.getFileDesc()];
+        
+  def __closeServer(self, server):
+    print "----GOT CLOSE"
+    self.stopServer(server)
+    del self.__servers[server.getSocket().fileno()];

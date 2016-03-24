@@ -8,26 +8,29 @@ class TCPClient(client.Client):
     self.__port = port
     if use_socket == None:
       self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      self.__connected = False
     else:
       self.__socket = use_socket
+      self.__connected = True
     self.__SUPER = super(TCPClient, self)
     self.__SUPER.__init__(socketExecuter, "TCP", self.__socket)
+    print self.__host, type(self.__host)
     self.__log = logging.getLogger("root.litesockets.TCPClient:"+self.__host+":"+str(self.__port))
-    self.__connected = False
     self.__sslEnabled = False
     self.__sslArgs = ((), {});
     self.__plainSocket = self.__socket
 
   def connect(self):
-    self.__log.debug("connecting %s:%d"%(self.__host, self.__port))
-    self.__socket.connect((self.__host, self.__port))
-    self.__socket.setblocking(0)
-    self.__socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    self.__socket.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 0, 10))
-    self.__log.debug("Client Connected")
-    self.__connected = True
-    if self.__sslEnabled:
-      self.startSSL()
+    if not self.__connected:
+      self.__connected = True
+      self.__log.debug("connecting %s:%d"%(self.__host, self.__port))
+      self.__socket.connect((self.__host, self.__port))
+      self.__socket.setblocking(0)
+      self.__socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+      self.__socket.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 0, 10))
+      self.__log.debug("Client Connected")
+      if self.__sslEnabled:
+        self.startSSL()
     
   def enableSSL(self, args=(), kwargs={}):
     self.__sslEnabled = True
@@ -54,6 +57,6 @@ class TCPServer(server.Server):
     
   def addClient(self, client):
     if self.getOnClient() != None:
-      tcp_client = TCPClient(client.getpeername()[0], client.getpeername()[1], self.getSocketExecuter(), set_socket = client)
+      tcp_client = self.getSocketExecuter().createTCPClient(client.getpeername()[0], client.getpeername()[1], use_socket = client)
       self.getSocketExecuter().getScheduler().schedule(self.getOnClient(), args=(tcp_client,))
 

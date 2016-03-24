@@ -20,9 +20,20 @@ class Client(object):
     self.__isClosed = False
     self.__TYPE = TYPE
     self.__socket = socket
+    self.__fd = None
+    if self.__socket != None:
+      self.__fd = socket.fileno()
+    
+  def connect(self):
+    raise Exception("Not Implemented!")
+  
+  def getFileDesc(self):
+    return self.__fd
     
   def setReader(self, reader):
     self.__reader = reader
+    if self.__readBuffSize > 0:
+      self.runOnClientThread(self.__reader, args=(self,))
 
   def addCloseListener(self, closer):
     self.__closers.append(closer)
@@ -43,7 +54,6 @@ class Client(object):
     return self.__socket
   
   def runOnClientThread(self, task, args=(), kwargs={}):
-    print "run", task
     self.__socketExecuter.getScheduler().schedule(task, key=self, args=args, kwargs=kwargs)
 
   def getRead(self):
@@ -91,8 +101,11 @@ class Client(object):
     if self.__write_buff == "" and len(self.__write_buff_list) > 0:
       self.__writelock.acquire()
       try:
-        
-        self.__write_buff = "".join(self.__write_buff_list)
+        if(self.__TYPE == "UDP"):
+          self.__write_buff = self.__write_buff_list.pop(0)
+        else:
+          self.__write_buff = "".join(self.__write_buff_list)
+          self.__write_buff_list = []
       finally:
         self.__writelock.release()
     return self.__write_buff
@@ -125,6 +138,7 @@ class Client(object):
           pass
         finally:
           for cl in self.__closers:
+            print "444444:close", cl
             self.runOnClientThread(cl, args=(self,))
     finally: 
       self.__readlock.acquire()

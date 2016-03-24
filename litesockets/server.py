@@ -28,6 +28,9 @@ class Server(object):
   def stop(self):
     self.__socketExecuter.stopServer(self)
     
+  def addCloseListener(self, closer):
+    self.__closers.append(closer)
+    
   def getOnClient(self):
     return self.__acceptor
 
@@ -35,12 +38,11 @@ class Server(object):
     if not self.__closed:
       self.__closed = True
       try:
-        self.__socketExecuter.stopServer(self)
         self.__socket.shutdown(socket.SHUT_RDWR)
-        for cl in self.__closers:
-          self.__socketExecuter.getScheduler(cl, args=(self,))
       except:
         pass
+      for cl in self.__closers:
+        self.__socketExecuter.getScheduler().execute(cl, args=(self,))
       
   def addClient(self, client):
     pass
