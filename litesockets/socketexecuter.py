@@ -108,73 +108,43 @@ class SocketExecuter():
 
   def stopServer(self, server):
     if isinstance(server, Server) and server.getSocket().fileno() in self.__servers:
-      try:
-        self.__AcceptorSelector.unregister(server.getSocket().fileno())
-      except:
-        pass
-
-  def addClient(self, client):
-    if isinstance(client, Client) and client.getFileDesc() in self.__clients:
-      self.setRead(client)
-
-  def rmClient(self, client):
+      noExcept(self.__AcceptorSelector.unregister, server.getSocket().fileno())
+      
+  def updateClientOperations(self, client, disable=False):
     if not isinstance(client, Client):
-      return 
+      return
     FN = client.getFileDesc()
     if FN in self.__clients:
-      try:
-        self.__ReadSelector.unregister(FN)
-      except:
-        pass
-      try:
-        self.__WriteSelector.unregister(FN)
-      except:
-        pass
-
-  def setRead(self, client, on=True):
-    try:
-      if client.getSocket().fileno() not in self.__clients:
+      if client.isClosed():
+        noExcept(self.__ReadSelector.unregister, FN)
+        noExcept(self.__WriteSelector.unregister, FN)
+        del self.__clients[FN]
         return
-    except:
-      return
-    try:
-      if on:
-        try:
-          print "register read", client
-          self.__ReadSelector.register(client.getSocket().fileno(), self.__DEFAULT_READ_POLLS)
-        except:
-          print "register read", client
-          self.__ReadSelector.modify(client.getSocket().fileno(), self.__DEFAULT_READ_POLLS)
+      
+      if client.getReadBufferSize() >= client.MAXBUFFER or disable:
+        noExcept(self.__ReadSelector.unregister, FN)
       else:
-        print "unregister read", client
-        self.__ReadSelector.unregister(client.getSocket().fileno())
-    except Exception as e:
-      self.log.error("Problem adding __ReadSelector for client %s %s"%(e, on))
-
-  def setWrite(self, client, on=True):
-    try:
-      if client.getSocket().fileno() not in self.__clients:
-        return
-    except:
-      return
-    try:
-      if on:
         try:
-          self.__WriteSelector.register(client.getSocket().fileno(), select.EPOLLOUT)
+          self.__ReadSelector.register(FN, self.__DEFAULT_READ_POLLS)
         except:
-          self.__WriteSelector.modify(client.getSocket().fileno(), select.EPOLLOUT)
+          noExcept(self.__ReadSelector.modify, FN, self.__DEFAULT_READ_POLLS)
+      if client.getWriteBufferSize() == 0  or disable:
+        noExcept(self.__WriteSelector.unregister, FN)
       else:
-        self.__WriteSelector.modify(client.getSocket().fileno(), 0)
-    except Exception as e:
-      self.log.error("Problem adding __WriteSelector %s"%(e))
-
+        try:
+          self.__WriteSelector.register(FN, select.EPOLLOUT)
+        except:
+          noExcept(self.__WriteSelector.modify, FN, select.EPOLLOUT)
 
 
   def __doReads(self):
-    events = self.__ReadSelector.poll(10000)
+    events = self.__ReadSelector.poll(1)
     for fileno, event in events:
+      if fileno not in self.__clients:
+        noExcept(self.__ReadSelector.unregister, fileno)
+        continue
       read_client = self.__clients[fileno]
-      print "read", read_client
+      
       dlen = 0
       if event & select.EPOLLIN:
         dlen = self.__clientRead(read_client)
@@ -214,11 +184,10 @@ class SocketExecuter():
 
 
   def __doWrites(self):
-    events = self.__WriteSelector.poll(10000)
+    events = self.__WriteSelector.poll(1)
     for fileno, event in events:
       if event & select.EPOLLOUT:
         CLIENT = self.__clients[fileno]
-        print "write:",CLIENT.getWriteBufferSize()
         l = 0
         try:
           if CLIENT.getType() == "UDP":
@@ -228,7 +197,6 @@ class SocketExecuter():
             #we only write 4k at a time because of some ssl problems with:
             # error:1409F07F:SSL routines:SSL3_WRITE_PENDING:bad write retry
             w = CLIENT.getWrite()
-            print "write:", w
             l = CLIENT.getSocket().send(w[:4096])
             CLIENT.reduceWrite(l)
           elif self.__clients[fileno].TYPE == "CUSTOM":
@@ -245,11 +213,12 @@ class SocketExecuter():
     
   def __clientErrors(self, client, fileno):
     self.log.debug("Removeing client %d "%(fileno))
-    self.rmClient(client)
+    noExcept(self.__ReadSelector.unregister, fileno)
+    noExcept(self.__WriteSelector.unregister, fileno)
     client.close()
 
   def __doAcceptor(self):
-    events = self.__AcceptorSelector.poll(10000)
+    events = self.__AcceptorSelector.poll(1)
     for fileno, event in events:
       SERVER = self.__servers[fileno]
       if event & select.EPOLLRDHUP or event & select.EPOLLHUP or event & select.EPOLLERR:
@@ -260,12 +229,15 @@ class SocketExecuter():
         SERVER.addClient(conn)
   
   def __closeClient(self, client):
-    #self.log("----GOT CLOSE: client" +""+str(client.getFileDesc())) 
-    self.rmClient(client)
-    if client.getFileDesc() in self.__clients:
-      del self.__clients[client.getFileDesc()];
+    client.close()
         
   def __closeServer(self, server):
-    print "----GOT CLOSE"
     self.stopServer(server)
-    del self.__servers[server.getSocket().fileno()];
+    del self.__servers[server.getSocket().fileno()]
+    
+    
+def noExcept(task, *args, **kwargs):
+  try:
+    task(*args, **kwargs)
+  except:
+    pass

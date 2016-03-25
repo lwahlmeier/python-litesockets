@@ -10,17 +10,17 @@ class UDPServer(Client):
     self.__port = self.__socket.getsockname()[1]
     self.__log = logging.getLogger("root.litesockets.UDPServer:"+self.__host+":"+str(self.__port))
     self.__clients = dict()
-    self.__socket.setblocking(False)
+    #self.__socket.setblocking(1)
     self.__SUPER = super(UDPServer, self)
     self.__SUPER.__init__(socketExecuter, "UDP", self.__socket);
     self.__acceptor = None
     self.addCloseListener(self.__closeClients)
 
   def start(self):
-    self.getSocketExecuter().addClient(self)
+    self.getSocketExecuter().updateClientOperations(self)
     
   def stop(self):
-    self.getSocketExecuter().rmClient(self)
+    self.getSocketExecuter().updateClientOperations(self)
     
   def setOnClient(self, acceptor):
     self.__acceptor = acceptor
@@ -29,7 +29,6 @@ class UDPServer(Client):
     pass
 
   def write(self, data):
-    print "----DATA:",data
     self.__socket.sendto(data[1], data[0])
 
   def getWrite(self):
@@ -63,9 +62,7 @@ class UDPServer(Client):
   def __closeClients(self, us):
     ld = self.__clients.copy()
     for client in ld:
-      print "0000000000:",ld[client], client
       ld[client].close()
-      print "1111111:CLOSED"
     
 
 
@@ -95,8 +92,6 @@ class UDPClient(Client):
     return (self.__host, self.__port)
 
   def close(self):
-    print "222222:Start Close"
     self.__server.removeUDPClient(self)
     self.__SUPER.close()
-    print "33333333:finish Close"
 

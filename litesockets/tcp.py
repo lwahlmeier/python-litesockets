@@ -1,4 +1,4 @@
-import socket, logging, struct, ssl
+import socket, logging, ssl
 import client
 import server
 
@@ -11,10 +11,10 @@ class TCPClient(client.Client):
       self.__connected = False
     else:
       self.__socket = use_socket
+      self.__socket.setblocking(0)
       self.__connected = True
     self.__SUPER = super(TCPClient, self)
     self.__SUPER.__init__(socketExecuter, "TCP", self.__socket)
-    print self.__host, type(self.__host)
     self.__log = logging.getLogger("root.litesockets.TCPClient:"+self.__host+":"+str(self.__port))
     self.__sslEnabled = False
     self.__startSSL = False
@@ -26,18 +26,23 @@ class TCPClient(client.Client):
       self.__connected = True
       self.__log.debug("connecting %s:%d"%(self.__host, self.__port))
       self.__socket.connect((self.__host, self.__port))
-      self.__socket.setblocking(0)
-      self.__socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-      self.__socket.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 0, 10))
-      self.__log.debug("Client Connected")
       if self.__sslEnabled and self.__startSSL:
         self.startSSL()
+      self.__socket.setblocking(0)
+      self.__log.debug("Client Connected")
+    self.getSocketExecuter().updateClientOperations(self)
+
+      
+  def getSocket(self):
+    return self.__socket
+
     
-  def enableSSL(self, start=False, args=(), kwargs={}):
+  def enableSSL(self, start=False, *args, **kwargs):
     if not self.__sslEnabled:
       self.__sslEnabled = True
       self.__sslArgs = (args, kwargs)
       self.__startSSL = start
+      self.__sslArgs[1]["do_handshake_on_connect"] = True
       if start and self.__connected:
         self.startSSL()
     else:
@@ -46,8 +51,12 @@ class TCPClient(client.Client):
   def startSSL(self):
     self.__startSSL = True
     if self.__connected:
+      self.getSocketExecuter().updateClientOperations(self, disable=True)
+      self.__socket.setblocking(1)
       tmpSocket = ssl.wrap_socket(self.__plainSocket, *self.__sslArgs[0], **self.__sslArgs[1])
       self.__socket = tmpSocket
+      self.__socket.setblocking(0)
+      self.getSocketExecuter().updateClientOperations(self)
 
 class TCPServer(server.Server):
   def __init__(self, socketExecuter, host, port):
@@ -63,8 +72,8 @@ class TCPServer(server.Server):
     self.__SUPER.__init__(socketExecuter, self.__socket, "TCP")
     self.__ssl_info = None
     
-  def setSSLInfo(self, certFile, keyFile, doHandshake=False, hostname=None, kwargs={}):
-    self.__ssl_info = {"keyfile":keyFile, "certfile":certFile, "server_side":True, "do_handshake_on_connect":doHandshake}
+  def setSSLInfo(self, certFile, keyFile, doHandshake=True, hostname=None, kwargs={}):
+    self.__ssl_info = {"keyfile":keyFile, "certfile":certFile, "server_side":True, "do_handshake_on_connect":doHandshake, "start":doHandshake}
     self.__ssl_info.update(kwargs)
     
     
@@ -73,5 +82,6 @@ class TCPServer(server.Server):
       tcp_client = self.getSocketExecuter().createTCPClient(client.getpeername()[0], client.getpeername()[1], use_socket = client)
       if self.__ssl_info != None:
         tcp_client.enableSSL(**self.__ssl_info)
+      self.getSocketExecuter().updateClientOperations(tcp_client)
       self.getSocketExecuter().getScheduler().schedule(self.getOnClient(), args=(tcp_client,))
 

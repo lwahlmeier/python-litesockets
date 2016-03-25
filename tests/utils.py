@@ -10,7 +10,7 @@ class testClass():
 
   def read(self, client):
     data = client.getRead()
-    print self.name+":read Data", len(data)
+    print self.name+":read Data", len(data)#, data
     self.reads.append(data)
     self.read_len+=len(data)
 
@@ -19,7 +19,7 @@ class testClass():
     self.clients.append(client)
     client.setReader(self.read)
     client.addCloseListener(self.remove)
-    self.socketExecuter.addClient(client)
+    #client.connect()
 
   def remove(self, client):
     try:

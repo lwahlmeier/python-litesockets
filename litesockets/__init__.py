@@ -3,8 +3,6 @@ from udp import UDPClient, UDPServer
 from tcp import TCPClient, TCPServer
 from threadly import Singleton
 
-print Singleton
-print SocketExecuter
 class GlobalSocketExecuter(Singleton.Singleton, SocketExecuter):
   """
   This is a Singleton instance of a SocketExecuter.  This is not constructed until created for the first time

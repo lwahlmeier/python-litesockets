@@ -76,18 +76,29 @@ class TestUdp(unittest.TestCase):
     for i in xrange(0, LOOPS):
       baseSha.update(TEST_STRING)
       client.write([("localhost", PORT), TEST_STRING])
+      if i%10 == 0:
+        time.sleep(.01)
     newSha = baseSha.hexdigest()
     c = 0
+    
     while ta.read_len < BYTES and c < 500:
       time.sleep(.01)
       c+=1
-    print "WAIT", ta.read_len, c
+    print "WAIT", ta.read_len, BYTES
+    
+    
     self.assertEquals(hashlib.sha256("".join(ta.reads)).hexdigest(), newSha)
     self.assertEquals(ta.read_len, BYTES)
     X = "".join(ta.reads)
+    
+    i=0
     while len(X) > 0:
       ta.clients[0].write(X[:1000])
       X=X[1000:]
+      time.sleep(.1)
+      i+=1
+      
+      
     c = 0
     while cta.read_len < BYTES and c < 500:
       time.sleep(.01)

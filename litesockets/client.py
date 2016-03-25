@@ -1,4 +1,5 @@
-import threading
+import threading, socket
+import socketexecuter
 
 class Client(object):
 
@@ -62,12 +63,18 @@ class Client(object):
     This will return a string with data"""
     self.__readlock.acquire()
     try:
-      data = "".join(self.__read_buff_list)
-      self.__read_buff_list = []
-      l = len(data)
+      data = ""
+      l = 0
+      if(self.__TYPE == "UDP"):
+        data = self.__read_buff_list.pop(0)
+        l = len(data)
+      else:
+        data = "".join(self.__read_buff_list)
+        self.__read_buff_list = []
+        l = len(data)
       self.__readBuffSize-=l
       if (self.__readBuffSize+l) >= self.MAXBUFFER and self.__readBuffSize < self.MAXBUFFER:
-        self.__socketExecuter.setRead(self, on=True)
+        self.__socketExecuter.updateClientOperations(self)
       return data
     finally:
       self.__readlock.release()
@@ -79,9 +86,8 @@ class Client(object):
       self.__read_buff_list.append(data)
       self.__readBuffSize+=len(data)
       if self.__readBuffSize > self.MAXBUFFER:
-        self.__socketExecuter.setRead(self, on=False)
-      if len(self.__read_buff_list) == 1:
-        print "run Read"
+        self.__socketExecuter.updateClientOperations(self)
+      if len(self.__read_buff_list) == 1 or self.__TYPE == "UDP":
         if self.__reader != None:
           self.runOnClientThread(self.__reader, args=(self,))
     finally:
@@ -92,7 +98,7 @@ class Client(object):
     self.__write_buff_list.append(data)
     self.__writeBuffSize+=len(data)
     self.__writelock.release()
-    self.__socketExecuter.setWrite(self, True)
+    self.__socketExecuter.updateClientOperations(self)
 
   def getWrite(self):
     """this is called by the SocektExecuter once addWrite has added data to write to the socket and the socket is ready to be written to.
@@ -101,11 +107,8 @@ class Client(object):
     if self.__write_buff == "" and len(self.__write_buff_list) > 0:
       self.__writelock.acquire()
       try:
-        if(self.__TYPE == "UDP"):
-          self.__write_buff = self.__write_buff_list.pop(0)
-        else:
-          self.__write_buff = "".join(self.__write_buff_list)
-          self.__write_buff_list = []
+        self.__write_buff = "".join(self.__write_buff_list)
+        self.__write_buff_list = []
       finally:
         self.__writelock.release()
     return self.__write_buff
@@ -114,31 +117,27 @@ class Client(object):
     """This is called by the SocketExecuter once data is written out to the socket to reduce the amount of data on the writeBuffer"""
     self.__writelock.acquire()
     try:
-      print "reduce", size
       self.__writeBuffSize -= size
       self.__write_buff = self.__write_buff[size:]
       if self.__writeBuffSize == 0:
-        self.__socketExecuter.setWrite(self, on=False)
-      if self.__writeBuffSize < self.MAXBUFFER:
-        self.__writelock.notify()
+        self.__socketExecuter.updateClientOperations(self)
     finally:
       self.__writelock.release()
 
+  def isClosed(self):
+    return self.__isClosed
 
   def close(self):
     """This closes the socket and should remove the client from the SocketExecuter"""
-    self.__readlock.acquire()
-    try:
-      if  not self.__isClosed:
-        self.__isClosed = True
-        try:
-          self.__socket.close()
-        except Exception:
-          #We dont care at this point!
-          pass
-        finally:
-          for cl in self.__closers:
-            print "444444:close", cl
-            self.runOnClientThread(cl, args=(self,))
-    finally: 
+    if  not self.__isClosed:
       self.__readlock.acquire()
+      try:
+        if  not self.__isClosed:
+          self.__isClosed = True
+          socketexecuter.noExcept(self.__socket.shutdown, socket.SHUT_RDWR)
+          socketexecuter.noExcept(self.__socket.close)
+          for cl in self.__closers:
+            self.runOnClientThread(cl, args=(self,))
+      finally: 
+        self.__readlock.acquire()
+      self.getSocketExecuter().updateClientOperations(self)

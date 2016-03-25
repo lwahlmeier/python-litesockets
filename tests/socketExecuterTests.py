@@ -57,9 +57,6 @@ class TestSE(unittest.TestCase):
       self.assertEquals(len(SE.getClients()), (CLIENT_NUM*2)-((i+1)*2))
     self.assertEquals(len(SE.getClients()), 0)
 
-    for i in xrange(CLIENT_NUM):
-      SE.addClient(clients[i])
-      self.assertEquals(len(SE.getClients()), 0)
     SE.stop()
 
 
@@ -108,7 +105,7 @@ class TestSE(unittest.TestCase):
     cta = testClass(SE)
     client.setReader(cta.read)
     client.connect()
-    SE.addClient(client)
+
     c = 0
     while len(ta.clients) <= 0 and c < 500:
       time.sleep(.01)

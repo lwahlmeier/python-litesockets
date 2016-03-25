@@ -32,7 +32,6 @@ class TestTcp(unittest.TestCase):
     test_client = testClass(self.socketExecuter)
     client.setReader(test_client.read)
     client.connect()
-    self.socketExecuter.addClient(client)
     client.write(TEST_STRING)
 
     waitTill(lambda X: test.read_len < X, len(TEST_STRING) , 500)
@@ -55,7 +54,7 @@ class TestTcp(unittest.TestCase):
 
 
   def test_TCPsendLots(self):
-    LOOPS = 50
+    LOOPS = 500
     STR_SIZE = len(TEST_STRING)
     BYTES = STR_SIZE*LOOPS
     test = testClass(self.socketExecuter)
@@ -68,7 +67,7 @@ class TestTcp(unittest.TestCase):
     test_client = testClass(self.socketExecuter)
     client.setReader(test_client.read)
     client.connect()
-    self.socketExecuter.addClient(client)
+
     baseSha = hashlib.sha256()
     for i in xrange(0, LOOPS):
       baseSha.update(TEST_STRING)
