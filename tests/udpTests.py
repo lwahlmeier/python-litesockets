@@ -55,7 +55,7 @@ class TestUdp(unittest.TestCase):
     
 
   def test_UdpSendLots(self):
-    LOOPS = 500
+    LOOPS = 200
     STR_SIZE = len(TEST_STRING)
     BYTES = STR_SIZE*LOOPS
     ta = testClass(self.__socketExecuter)
@@ -77,7 +77,7 @@ class TestUdp(unittest.TestCase):
       baseSha.update(TEST_STRING)
       client.write([("localhost", PORT), TEST_STRING])
       if i%10 == 0:
-        time.sleep(.01)
+        time.sleep(.1)
     newSha = baseSha.hexdigest()
     c = 0
     

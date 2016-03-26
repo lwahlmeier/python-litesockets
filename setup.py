@@ -12,9 +12,9 @@ setup (# Distribution meta-data
        url = "https://github.com/lwahlmeier/python-litesockets",
        download_url = "https://github.com/lwahlmeier/python-litesockets/tarball/%s"%(VERSION),
        test_suite = "tests",
-       license = "lgpl",
+       license = "unlicense",
        description = "A multi threaded socket library for python",
-       install_requires = ['threadly>=0.6.1'],
+       install_requires = ['threadly>=0.7.0'],
        packages =  ['litesockets'],
        keywords = ["networking"],
        classifiers=[
@@ -24,7 +24,8 @@ setup (# Distribution meta-data
         'Operating System :: POSIX :: Linux',
         'Programming Language :: Python',
         'Topic :: Software Development :: Libraries',
-        'Topic :: Utilities'
+        'Topic :: Utilities',
+        'License :: Public Domain'
         ],
 
       )
