@@ -224,18 +224,18 @@ class SocketExecuter():
   def __clientRead(self, read_client):
     data = EMPTY_STRING
     try:
-      if read_client.getType() == "CUSTOM":
+      if read_client._getType() == "CUSTOM":
         data = read_client.READER()
         if data != EMPTY_STRING:
-          read_client.addRead(data)
+          read_client._addRead(data)
       elif read_client.getSocket().type == socket.SOCK_STREAM:
         data = read_client.getSocket().recv(65536)
         if data != EMPTY_STRING:
-          read_client.addRead(data)
+          read_client._addRead(data)
       elif read_client.getSocket().type == socket.SOCK_DGRAM:
         data, addr = read_client.getSocket().recvfrom(65536)
         if data != EMPTY_STRING:
-          read_client.addRead([addr, data])
+          read_client._addRead([addr, data])
       self.__stats['RB'] += len(data)
       return len(data)
     except ssl.SSLError as err:
@@ -260,15 +260,15 @@ class SocketExecuter():
         CLIENT = self.__clients[fileno]
         l = 0
         try:
-          if CLIENT.getType() == "UDP":
-            d = CLIENT.getWrite()
+          if CLIENT._getType() == "UDP":
+            d = CLIENT._getWrite()
             l = CLIENT.getSocket().sendto(d[1], d[0])
-          elif CLIENT.getType() == "TCP":
+          elif CLIENT._getType() == "TCP":
             #we only write 4k at a time because of some ssl problems with:
             # error:1409F07F:SSL routines:SSL3_WRITE_PENDING:bad write retry
-            w = CLIENT.getWrite()
+            w = CLIENT._getWrite()
             l = CLIENT.getSocket().send(w[:4096])
-            CLIENT.reduceWrite(l)
+            CLIENT._reduceWrite(l)
           elif self.__clients[fileno].TYPE == "CUSTOM":
             l = self.__clients[fileno].WRITER()
           self.__stats['SB'] += l
