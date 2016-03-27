@@ -12,7 +12,7 @@ class TestSE(unittest.TestCase):
 
   def test_SE_ServerStartMany(self):
     sch = Scheduler(10)
-    SE = litesockets.SocketExecuter(executor=sch)
+    SE = litesockets.SocketExecuter(scheduler=sch)
     SE1 = litesockets.SocketExecuter()
     self.assertTrue(SE.isRunning(), "SE not running")
     self.assertTrue(SE1.isRunning(), "SE1 not running")

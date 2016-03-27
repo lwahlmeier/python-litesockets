@@ -13,7 +13,7 @@ class Server(object):
   def setOnClient(self, acceptor):
     self.__acceptor = acceptor
     
-  def getType(self):
+  def _getType(self):
     return self.__TYPE
   
   def getSocket(self):

@@ -1,8 +1,8 @@
 import socket, logging
-from .client import Client
+import client
 
 
-class UDPServer(Client):
+class UDPServer(client.Client):
   def __init__(self, host, port, socketExecuter):
     self.__host = host
     self.__socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -31,13 +31,13 @@ class UDPServer(Client):
   def write(self, data):
     self.__socket.sendto(data[1], data[0])
 
-  def getWrite(self):
+  def _getWrite(self):
     pass
 
-  def reduceWrite(self, size):
+  def _reduceWrite(self, size):
     pass
 
-  def addRead(self, data):
+  def _addRead(self, data):
     ipp = data[0]
     if ipp not in self.__clients:
       udpc = UDPClient(self, ipp[0], ipp[1], self.getSocketExecuter())
@@ -46,7 +46,7 @@ class UDPServer(Client):
         self.getSocketExecuter().getScheduler().execute(self.__acceptor, args=(udpc,))
     udpc = self.__clients[ipp]
     if udpc.getReadBufferSize() < udpc.MAXBUFFER:
-      udpc.addRead(data[1])
+      udpc._addRead(data[1])
 
   def getRead(self):
     pass
@@ -66,7 +66,7 @@ class UDPServer(Client):
     
 
 
-class UDPClient(Client):
+class UDPClient(client.Client):
   def __init__(self, udpServer, host, port, socketExecuter):
     self.__host = socket.gethostbyname(host)
     self.__port = port
@@ -82,10 +82,10 @@ class UDPClient(Client):
   def write(self, data):
     self.__server.write([(self.__host, self.__port), data])
 
-  def reduceWrite(self, size):
+  def _reduceWrite(self, size):
     pass
 
-  def getWrite(self):
+  def _getWrite(self):
     pass
   
   def getAddress(self):

@@ -14,12 +14,20 @@ class SocketExecuter():
   """
   The main SocketExecuter for litesockets.  
 
-  The SocketExecuter is what processes all socket operations.  Doing the writes, reads, and accepts.  It will also do the callback
-  when a read or accept happen.  Having a SocketExecuter is required for all litesockets Connections, and in general only 1 is need
-  per process.
+  The SocketExecuter is what processes all socket operations.  Doing the writes, reads, and accepting new connections.  
+  It also does all the callbacks when a read or new socket connects.  Having a SocketExecuter is required for all litesockets 
+  Connections, and in general only 1 should be needed per process.
   """
-  def __init__(self, threads=5, executor=None):
-    self.log = logging.getLogger("root.litesockets.SocketExecuter")
+  def __init__(self, threads=5, scheduler=None):
+    """
+    Constructs a new SocketExecuter
+    
+    `threads` used to set the number of threads used when creating a Scheduler when no Scheduler is provided.
+    
+    `scheduler` this scheduler will be used with the SocketExecuters client/server callbacks. 
+    """
+    
+    self.__log = logging.getLogger("root.litesockets.SocketExecuter")
     self.__DEFAULT_READ_POLLS = select.EPOLLIN|select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR
     self.__DEFAULT_ACCEPT_POLLS = select.EPOLLIN|select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR
     self.__clients = dict()
@@ -28,11 +36,11 @@ class SocketExecuter():
     self.__WriteSelector = select.epoll()
     self.__AcceptorSelector = select.epoll()
     self.__internalExec = None
-    if executor == None:
+    if scheduler == None:
       self.__executor = Scheduler(threads)
       self.__internalExec = self.__executor 
     else:
-      self.__executor = executor
+      self.__executor = scheduler
     self.__stats = dict()
     self.__stats['RB'] = 0
     self.__stats['SB'] = 0
@@ -40,49 +48,55 @@ class SocketExecuter():
     self.__start()
 
   def getScheduler(self):
+    """
+    Returns the scheduler that is set for this SocketExecuter.
+    """
+    
     return self.__executor
 
   def __start(self):
     if not self.__running:
       self.__running = True
-      self.log.info("Start __ReadSelector")
+      self.__log.info("Start __ReadSelector")
       T = threading.Thread(target= self.__doThread, args=(self.__doReads,))
       T.daemon = True
       T.start()
-      self.log.info("Start __WriteSelector")
+      self.__log.info("Start __WriteSelector")
       T = threading.Thread(target= self.__doThread, args=(self.__doWrites,))
       T.daemon = True
       T.start()
-      self.log.info("Start __AcceptorSelector")
+      self.__log.info("Start __AcceptorSelector")
       T = threading.Thread(target= self.__doThread, args=(self.__doAcceptor,))
       T.daemon = True
       T.start()
     else:
-      self.log.debug("groupPoll already started")
+      self.__log.debug("groupPoll already started")
 
   def stop(self):
+    """
+    Stops the SocketExecuter, this will close all clients/servers created from it.
+    """
+    
     self.__running = False
     if self.__internalExec != None:
       self.__internalExec.shutdown_now()
       
   def isRunning(self):
+    """
+    Returns True if the SocketExecuter is running or False if it was shutdown.
+    """
+    
     return self.__running
   
-  def getClients(self):
-    return list(self.__clients.values())
-  
-  def getServers(self):
-    return list(self.__servers.values())
-
-  def __doThread(self, t):
-    while self.__running:
-      try:
-        t()
-      except Exception as e:
-        self.log.error("GP Socket Exception: %s: %s"%(t, sys.exc_info()[0]))
-        self.log.error(e)
-        
   def createUDPServer(self, host, port):
+    """
+    Returns a UDPServer
+    
+    `host` the host or IP address open the listen port on.
+    
+    `port` the port to open up.
+    """
+    
     us = UDPServer(host, port, self)
     FN = us.getFileDesc()
     self.__clients[FN] = us
@@ -90,27 +104,83 @@ class SocketExecuter():
     return us
   
   def createTCPClient(self, host, port, use_socket = None):
+    """
+    Returns a TCPClient
+    
+    `host` the host or IP to connect the client to.
+    
+    `port` the port on that host to connect to.
+    """
+    
     c = TCPClient(host, port, self, use_socket=use_socket)
     self.__clients[c.getSocket().fileno()] = c
     c.addCloseListener(self.__closeClient)
     return c
         
   def createTCPServer(self, host, port):
+    """
+    Returns a TCPServer
+    
+    `host` the host or IP address open the listen port on.
+    
+    `port` the port to open up.
+    """
+    
     s = TCPServer(self, host, port)
     self.__servers[s.getSocket().fileno()] = s
     s.addCloseListener(self.__closeServer)
     return s
+  
+  def getClients(self):
+    """
+    Returns a list of all the Clients still open and associated with this SocketExecuter.
+    """
+    
+    return list(self.__clients.values())
+  
+  def getServers(self):
+    """
+    Returns a list of all Servers still open and associated with this SocketExecuter.
+    """
+    return list(self.__servers.values())
+
+  def __doThread(self, t):
+    while self.__running:
+      try:
+        t()
+      except Exception as e:
+        self.__log.error("GP Socket Exception: %s: %s"%(t, sys.exc_info()[0]))
+        self.__log.error(e)
 
   def startServer(self, server):
+    """
+    Generally this is not called except through Server.start() you can do that manually if wanted.
+    
+    `server` the server to start listening on.
+    """
+    
     if isinstance(server, Server) and server.getSocket().fileno() in self.__servers:
       self.__AcceptorSelector.register(server.getSocket().fileno(), self.__DEFAULT_ACCEPT_POLLS)      
-      self.log.info("Added New Server")
+      self.__log.info("Added New Server")
 
   def stopServer(self, server):
+    """
+    Generally this is not called except through Server.stop() you can do that manually if wanted.
+    
+    `server` the server to start listening on.
+    """
     if isinstance(server, Server) and server.getSocket().fileno() in self.__servers:
       noExcept(self.__AcceptorSelector.unregister, server.getSocket().fileno())
       
   def updateClientOperations(self, client, disable=False):
+    """
+    This is called to detect what operations to check the client for.  This will decide if
+    the client need to check to writes and/or reads and then takes the appropriate actions.
+    
+    `client` the client to check for operations on.
+    
+    `disable` if this is set to True it will force the client to be removed from both reads and writes.
+    """
     if not isinstance(client, Client):
       return
     FN = client.getFileDesc()
@@ -171,15 +241,15 @@ class SocketExecuter():
     except ssl.SSLError as err:
       pass
     except KeyError as e:
-      self.log.debug("client removed on read")
+      self.__log.debug("client removed on read")
     except IOError as e:
       if e.errno != errno.EAGAIN:
-        self.log.error("Read Error: %s"%(sys.exc_info()[0]))
-        self.log.error(e)
+        self.__log.error("Read Error: %s"%(sys.exc_info()[0]))
+        self.__log.error(e)
     except Exception as e:
-      self.log.error("Read Error: %s"%(sys.exc_info()[0]))
-      self.log.error(e)
-      self.log.error(errno.EAGAIN)
+      self.__log.error("Read Error: %s"%(sys.exc_info()[0]))
+      self.__log.error(e)
+      self.__log.error(errno.EAGAIN)
     return 0
 
 
@@ -203,16 +273,16 @@ class SocketExecuter():
             l = self.__clients[fileno].WRITER()
           self.__stats['SB'] += l
         except Exception as e:
-          self.log.debug("Write Error: %s"%(sys.exc_info()[0]))
-          self.log.debug(e)
+          self.__log.debug("Write Error: %s"%(sys.exc_info()[0]))
+          self.__log.debug(e)
 
   def __serverErrors(self, server, fileno):
-    self.log.debug("Removeing Server %d "%(fileno))
+    self.__log.debug("Removeing Server %d "%(fileno))
     self.__AcceptorSelector.unregister(fileno)
     server.close()
     
   def __clientErrors(self, client, fileno):
-    self.log.debug("Removeing client %d "%(fileno))
+    self.__log.debug("Removeing client %d "%(fileno))
     noExcept(self.__ReadSelector.unregister, fileno)
     noExcept(self.__WriteSelector.unregister, fileno)
     client.close()
@@ -224,7 +294,7 @@ class SocketExecuter():
       if event & select.EPOLLRDHUP or event & select.EPOLLHUP or event & select.EPOLLERR:
         self.__serverErrors(SERVER, fileno)
       elif fileno in self.__servers:
-        self.log.debug("New Connection")
+        self.__log.debug("New Connection")
         conn, addr = SERVER.getSocket().accept()
         SERVER.addClient(conn)
   
@@ -237,6 +307,9 @@ class SocketExecuter():
     
     
 def noExcept(task, *args, **kwargs):
+  """
+  Helper function that helps swallow exceptions.
+  """
   try:
     task(*args, **kwargs)
   except:
