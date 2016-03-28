@@ -10,7 +10,7 @@ class UDPServer(client.Client):
     self.__port = self.__socket.getsockname()[1]
     self.__log = logging.getLogger("root.litesockets.UDPServer:"+self.__host+":"+str(self.__port))
     self.__clients = dict()
-    #self.__socket.setblocking(1)
+    self.__socket.setblocking(0)
     self.__SUPER = super(UDPServer, self)
     self.__SUPER.__init__(socketExecuter, "UDP", self.__socket);
     self.__acceptor = None
@@ -27,26 +27,25 @@ class UDPServer(client.Client):
     
   def connect(self):
     pass
-
-  def write(self, data):
-    self.__socket.sendto(data[1], data[0])
-
-  def _getWrite(self):
-    pass
-
-  def _reduceWrite(self, size):
-    pass
-
+ 
   def _addRead(self, data):
     ipp = data[0]
     if ipp not in self.__clients:
-      udpc = UDPClient(self, ipp[0], ipp[1], self.getSocketExecuter())
+      print "------NEW CLIENT!"
+      udpc = self.createUDPClient(ipp[0], ipp[1])
       self.__clients[ipp] = udpc
       if self.__acceptor != None: 
         self.getSocketExecuter().getScheduler().execute(self.__acceptor, args=(udpc,))
     udpc = self.__clients[ipp]
     if udpc.getReadBufferSize() < udpc.MAXBUFFER:
       udpc._addRead(data[1])
+    else:
+      print "DROPPED!"
+
+      
+    
+  def getClients(self):
+    return list(self.__clients)
 
   def getRead(self):
     pass
@@ -55,8 +54,8 @@ class UDPServer(client.Client):
     del self.__clients[client.getAddress()]
 
   def createUDPClient(self, host, port):
-    client = UDPClient(self, host, port)
-    self.__clients[(client.host, client.port)] = client
+    client = UDPClient(self, host, port, self.getSocketExecuter())
+    self.__clients[(host, port)] = client
     return client
     
   def __closeClients(self, us):

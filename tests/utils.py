@@ -10,7 +10,7 @@ class testClass():
 
   def read(self, client):
     data = client.getRead()
-    print self.name+":read Data", len(data)#, data
+    #print self.name+":read Data", len(data)#, data
     self.reads.append(data)
     self.read_len+=len(data)
 

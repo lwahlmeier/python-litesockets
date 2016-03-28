@@ -1,6 +1,6 @@
 import unittest, time, hashlib, logging
 import litesockets
-from utils import testClass
+from utils import testClass, waitTill
 
 
 
@@ -55,8 +55,9 @@ class TestUdp(unittest.TestCase):
     
 
   def test_UdpSendLots(self):
-    LOOPS = 200
-    STR_SIZE = len(TEST_STRING)
+    LTEST_STRING = TEST_STRING*10
+    LOOPS = 2000
+    STR_SIZE = len(LTEST_STRING)
     BYTES = STR_SIZE*LOOPS
     ta = testClass(self.__socketExecuter)
     server = self.__socketExecuter.createUDPServer("localhost", 0)
@@ -72,20 +73,26 @@ class TestUdp(unittest.TestCase):
     #client.addCloseListener(cta.accept)
     client.start()
     
+    cclient = client.createUDPClient("127.0.0.1", PORT)
+    cclient.MAXBUFFER = BYTES*10
+    cclient.setReader(cta.read)
+    
+    
+    sclient = server.createUDPClient("127.0.0.1", client.getSocket().getsockname()[1])
+    sclient.MAXBUFFER = BYTES*10
+    sclient.setReader(ta.read)
+    
     baseSha = hashlib.sha256()
     for i in xrange(0, LOOPS):
-      baseSha.update(TEST_STRING)
-      client.write([("localhost", PORT), TEST_STRING])
-      if i%10 == 0:
-        time.sleep(.1)
+      baseSha.update(LTEST_STRING)
+      cclient.write(LTEST_STRING)
     newSha = baseSha.hexdigest()
-    c = 0
-    
-    while ta.read_len < BYTES and c < 500:
-      time.sleep(.01)
-      c+=1
+
+
+    waitTill(lambda X: ta.read_len < X, BYTES, 500)
+
     print "WAIT", ta.read_len, BYTES
-    
+    print ta.reads[0], cclient.getWriteBufferSize(), sclient.getReadBufferSize(), server.getClients()
     
     self.assertEquals(hashlib.sha256("".join(ta.reads)).hexdigest(), newSha)
     self.assertEquals(ta.read_len, BYTES)
@@ -93,16 +100,17 @@ class TestUdp(unittest.TestCase):
     
     i=0
     while len(X) > 0:
-      ta.clients[0].write(X[:1000])
+      sclient.write(X[:1000])
       X=X[1000:]
-      time.sleep(.1)
       i+=1
+      #time.sleep(.01)
+      #print "write", i
       
-      
-    c = 0
-    while cta.read_len < BYTES and c < 500:
-      time.sleep(.01)
-      c+=1
+    waitTill(lambda X: cta.read_len < X, BYTES, 500)
+    
+    print "WAIT", cta.read_len, BYTES
+    print cta.reads[0], cclient.getReadBufferSize(), cclient.getWriteBufferSize()
+    
     self.assertEquals(hashlib.sha256("".join(cta.reads)).hexdigest(), newSha)
     client.close()
     server.close()

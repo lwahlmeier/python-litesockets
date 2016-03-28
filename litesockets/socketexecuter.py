@@ -228,15 +228,20 @@ class SocketExecuter():
         data = read_client.READER()
         if data != EMPTY_STRING:
           read_client._addRead(data)
+          self.__stats['RB'] += len(data)
       elif read_client.getSocket().type == socket.SOCK_STREAM:
         data = read_client.getSocket().recv(655360)
         if data != EMPTY_STRING:
           read_client._addRead(data)
+          self.__stats['RB'] += len(data)
       elif read_client.getSocket().type == socket.SOCK_DGRAM:
-        data, addr = read_client.getSocket().recvfrom(65536)
-        if data != EMPTY_STRING:
-          read_client._addRead([addr, data])
-      self.__stats['RB'] += len(data)
+        data = ""
+        while data is not None:
+          data, addr = read_client.getSocket().recvfrom(65536)
+          #print data
+          if data != EMPTY_STRING:
+            read_client.runOnClientThread(read_client._addRead, args=([addr, data],))
+            self.__stats['RB'] += len(data)
       return len(data)
     except ssl.SSLError as err:
       pass
@@ -263,6 +268,7 @@ class SocketExecuter():
           if CLIENT._getType() == "UDP":
             d = CLIENT._getWrite()
             l = CLIENT.getSocket().sendto(d[1], d[0])
+            CLIENT._reduceWrite(l)
           elif CLIENT._getType() == "TCP":
             w = CLIENT._getWrite()
             l = CLIENT.getSocket().send(w)

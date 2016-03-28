@@ -42,7 +42,12 @@ class Client(object):
     """
     self.__reader = reader
     if self.__readBuffSize > 0:
-      self.runOnClientThread(self.__reader, args=(self,))
+      if self.__TYPE == "TCP":
+        self.runOnClientThread(self.__reader, args=(self,))
+      elif self.__TYPE == "UDP":
+        l = len(self.__read_buff_list)
+        for i in xrange(l):
+          self.runOnClientThread(self.__reader, args=(self,))
 
   def addCloseListener(self, closer):
     """
@@ -106,15 +111,27 @@ class Client(object):
 
 
   def write(self, data):
-    size = len(data)
-    data_list = []
-    for i in xrange(0,size,1024*64):
-      data_list.append(data[i:i+(1024*64)])
-    self.__writelock.acquire()
-    self.__write_buff_list.extend(data_list)
-    self.__writeBuffSize+=size
-    self.__writelock.release()
-    self.__socketExecuter.updateClientOperations(self)
+    if self.__TYPE == "TCP":
+      size = len(data)
+      data_list = []
+      for i in xrange(0,size,1024*64):
+        data_list.append(data[i:i+(1024*64)])
+      try:
+        self.__writelock.acquire()
+        self.__write_buff_list.extend(data_list)
+        self.__writeBuffSize+=size
+      finally:
+        self.__writelock.release()
+      self.__socketExecuter.updateClientOperations(self)
+    elif self.__TYPE == "UDP":
+      try:
+        self.__writelock.acquire()
+        self.__write_buff_list.append(data)
+        self.__writeBuffSize+=len(data[1])
+      finally:
+        self.__writelock.release()
+      self.__socketExecuter.updateClientOperations(self)
+      
 
   def close(self):
     """This closes the socket and should remove the client from the SocketExecuter"""
@@ -155,12 +172,13 @@ class Client(object):
   def _getWrite(self):
     """this is called by the SocektExecuter once addWrite has added data to write to the socket and the socket is ready to be written to.
      This does not remove any data from the writeBuffer as we will not know how much will be written yet (reduce write)"""
-    #done need a lock here since we are not changing anything yet
     self.__writelock.acquire()
     try:
       if len(self.__write_buff) == 0 and len(self.__write_buff_list) > 0:
-        self.__write_buff = bytearray(self.__write_buff_list.pop(0))
-        #self.__write_buff_list = []
+        if self.__TYPE == "TCP":
+          self.__write_buff = bytearray(self.__write_buff_list.pop(0))
+        if self.__TYPE == "UDP":
+          self.__write_buff = self.__write_buff_list.pop(0)
     finally:
       self.__writelock.release()
     return self.__write_buff
@@ -170,7 +188,11 @@ class Client(object):
     try:
       self.__writelock.acquire()
       self.__writeBuffSize -= size
-      del self.__write_buff[:size]
+      if self.__TYPE == "TCP":
+        del self.__write_buff[:size]
+      elif self.__TYPE == "UDP":
+        self.__write_buff = ""
+        
       if self.__writeBuffSize == 0:
         self.__socketExecuter.updateClientOperations(self)
     finally:
