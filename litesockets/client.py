@@ -22,6 +22,7 @@ class Client(object):
     self.__TYPE = TYPE
     self.__socket = socket
     self.__fd = None
+    self.__stats = socketexecuter.Stats()
     if self.__socket != None:
       self.__fd = socket.fileno()
     
@@ -56,6 +57,9 @@ class Client(object):
     `closer` the function to call close on when the client is closed.  
     """
     self.__closers.append(closer)
+    
+  def getStats(self):
+    return self.__stats
     
   def getSocketExecuter(self):
     """
@@ -158,8 +162,10 @@ class Client(object):
   def _addRead(self, data):
     self.__readlock.acquire()
     try:
+      size = len(data)
       self.__read_buff_list.append(data)
-      self.__readBuffSize+=len(data)
+      self.__stats._addRead(size)
+      self.__readBuffSize+=size
       if self.__readBuffSize > self.MAXBUFFER:
         self.__socketExecuter.updateClientOperations(self)
       if len(self.__read_buff_list) == 1 or self.__TYPE == "UDP":
@@ -192,13 +198,11 @@ class Client(object):
         del self.__write_buff[:size]
       elif self.__TYPE == "UDP":
         self.__write_buff = ""
-        
+      self.__stats._addWrite(size)
       if self.__writeBuffSize == 0:
         self.__socketExecuter.updateClientOperations(self)
     finally:
       self.__writelock.release()
-
-
       
   def _getType(self):
     return self.__TYPE

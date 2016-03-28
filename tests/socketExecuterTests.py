@@ -1,7 +1,7 @@
 import unittest, time, hashlib, logging
 import litesockets
 from threadly import Scheduler
-from utils import testClass
+from utils import testClass, waitTill
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(name)s - %(message)s")
 log = logging.getLogger("root")
@@ -92,6 +92,26 @@ class TestSE(unittest.TestCase):
     self.assertEquals(len(SE.getServers()), 0)
     SE.stop()
 
+  def test_SE_Stats(self):
+    SE = litesockets.SocketExecuter()
+    ta = testClass(SE)
+    server = SE.createTCPServer("localhost", 0)
+    server.setOnClient(ta.accept)
+    server.start()
+    PORT = server.getSocket().getsockname()[1]
+    client = SE.createTCPClient("localhost", PORT)
+    cta = testClass(SE)
+    client.setReader(cta.read)
+    client.connect()
+    waitTill(lambda X: len(ta.clients) < X, 1, 500)
+    client.write("X"*1000)
+    waitTill(lambda X: ta.read_len < X, 1000, 500)
+    self.assertEquals(1000, ta.read_len)
+    self.assertEquals(1000, SE.getStats().getTotalRead())
+    self.assertEquals(1000, SE.getStats().getTotalWrite())
+    self.assertTrue(1000, SE.getStats().getReadRate() > 0.0)
+    self.assertTrue(1000, SE.getStats().getWriteRate() > 0.0)
+    
 
   def test_SE_ClientMaxReads(self):
     SE = litesockets.SocketExecuter()

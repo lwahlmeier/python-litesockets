@@ -84,6 +84,17 @@ class TestTcp(unittest.TestCase):
 
     self.assertEquals(test.read_len, BYTES)
     self.assertEquals(hashlib.sha256("".join(test_client.reads)).hexdigest(), newSha)
+    
+    self.assertEqual(BYTES*2, self.socketExecuter.getStats().getTotalRead())
+    self.assertEqual(BYTES*2, self.socketExecuter.getStats().getTotalWrite())
+    self.assertEqual(BYTES, client.getStats().getTotalRead())
+    self.assertEqual(BYTES, client.getStats().getTotalWrite())
+    self.assertEqual(BYTES, test.clients[0].getStats().getTotalRead())
+    self.assertEqual(BYTES, test.clients[0].getStats().getTotalWrite())
+    time.sleep(.5)
+    print "----------------READ RATE:",test.clients[0].getStats().getReadRate() 
+    self.assertTrue(test.clients[0].getStats().getReadRate() > 0.0)
+    self.assertTrue(test.clients[0].getStats().getWriteRate() > 0.0)
 
     
 

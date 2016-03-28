@@ -56,7 +56,7 @@ class TestUdp(unittest.TestCase):
 
   def test_UdpSendLots(self):
     LTEST_STRING = TEST_STRING*10
-    LOOPS = 2000
+    LOOPS = 1000
     STR_SIZE = len(LTEST_STRING)
     BYTES = STR_SIZE*LOOPS
     ta = testClass(self.__socketExecuter)

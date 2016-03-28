@@ -1,5 +1,5 @@
 import select, logging, threading, sys, ssl, errno, socket
-from threadly import Scheduler
+from threadly import Scheduler, Clock
 from .client import Client
 from .server import Server
 from .tcp import TCPClient, TCPServer
@@ -41,9 +41,7 @@ class SocketExecuter():
       self.__internalExec = self.__executor 
     else:
       self.__executor = scheduler
-    self.__stats = dict()
-    self.__stats['RB'] = 0
-    self.__stats['SB'] = 0
+    self.__stats = Stats()
     self.__running = False
     self.__start()
 
@@ -143,6 +141,9 @@ class SocketExecuter():
     Returns a list of all Servers still open and associated with this SocketExecuter.
     """
     return list(self.__servers.values())
+  
+  def getStats(self):
+    return self.__stats
 
   def __doThread(self, t):
     while self.__running:
@@ -222,26 +223,26 @@ class SocketExecuter():
         self.__clientErrors(read_client, fileno)
 
   def __clientRead(self, read_client):
-    data = EMPTY_STRING
+    data_wrote = 0
     try:
       if read_client._getType() == "CUSTOM":
         data = read_client.READER()
         if data != EMPTY_STRING:
           read_client._addRead(data)
-          self.__stats['RB'] += len(data)
+          data_wrote+=len(data)
       elif read_client.getSocket().type == socket.SOCK_STREAM:
         data = read_client.getSocket().recv(655360)
         if data != EMPTY_STRING:
           read_client._addRead(data)
-          self.__stats['RB'] += len(data)
+          data_wrote+=len(data)
       elif read_client.getSocket().type == socket.SOCK_DGRAM:
         data = ""
         while data is not None:
           data, addr = read_client.getSocket().recvfrom(65536)
-          #print data
           if data != EMPTY_STRING:
             read_client.runOnClientThread(read_client._addRead, args=([addr, data],))
-            self.__stats['RB'] += len(data)
+            data_wrote+=len(data)
+      self.__stats._addRead(len(data))
       return len(data)
     except ssl.SSLError as err:
       pass
@@ -275,7 +276,7 @@ class SocketExecuter():
             CLIENT._reduceWrite(l)
           elif self.__clients[fileno].TYPE == "CUSTOM":
             l = self.__clients[fileno].WRITER()
-          self.__stats['SB'] += l
+          self.__stats._addWrite(l)
         except Exception as e:
           self.__log.debug("Write Error: %s"%(sys.exc_info()[0]))
           self.__log.debug(e)
@@ -318,3 +319,40 @@ def noExcept(task, *args, **kwargs):
     task(*args, **kwargs)
   except:
     pass
+
+class Stats(object):
+  def __init__(self):
+    self.__clock = Clock()
+    self.__startTime = self.__clock.accurate_time()
+    self.__totalRead = 0
+    self.__totalWrite = 0
+  
+  def getTotalRead(self):
+    return self.__totalRead
+  
+  def getTotalWrite(self):
+    return self.__totalWrite
+  
+  def getReadRate(self):
+    X = round(self.__totalRead/(self.__clock.accurate_time() - self.__startTime), 4)
+    if X > 0:
+      return X
+    else:
+      return 0 
+  
+  def getWriteRate(self):
+    X = round(self.__totalWrite/(self.__clock.accurate_time() - self.__startTime), 4)
+    if X > 0:
+      return X
+    else:
+      return 0
+  
+  def _addRead(self, size):
+    self.__totalRead += size
+    
+  def _addWrite(self, size):
+    self.__totalWrite += size
+    
+    
+    
+    

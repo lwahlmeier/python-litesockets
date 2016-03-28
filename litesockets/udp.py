@@ -31,19 +31,17 @@ class UDPServer(client.Client):
   def _addRead(self, data):
     ipp = data[0]
     if ipp not in self.__clients:
-      print "------NEW CLIENT!"
       udpc = self.createUDPClient(ipp[0], ipp[1])
       self.__clients[ipp] = udpc
       if self.__acceptor != None: 
         self.getSocketExecuter().getScheduler().execute(self.__acceptor, args=(udpc,))
     udpc = self.__clients[ipp]
     if udpc.getReadBufferSize() < udpc.MAXBUFFER:
-      udpc._addRead(data[1])
+      udpc.runOnClientThread(udpc._addRead, args=(data[1],))
     else:
       print "DROPPED!"
+    #X = self.getStats()._addRead(len(data))
 
-      
-    
   def getClients(self):
     return list(self.__clients)
 
@@ -75,11 +73,11 @@ class UDPClient(client.Client):
     self.__SUPER.__init__(socketExecuter, "UDP", None)
 
   def connect(self):
-    #noop
     pass
 
   def write(self, data):
     self.__server.write([(self.__host, self.__port), data])
+    self.getStats()._addWrite(len(data))
 
   def _reduceWrite(self, size):
     pass
