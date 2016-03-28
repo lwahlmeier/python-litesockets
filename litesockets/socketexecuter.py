@@ -229,7 +229,7 @@ class SocketExecuter():
         if data != EMPTY_STRING:
           read_client._addRead(data)
       elif read_client.getSocket().type == socket.SOCK_STREAM:
-        data = read_client.getSocket().recv(65536)
+        data = read_client.getSocket().recv(655360)
         if data != EMPTY_STRING:
           read_client._addRead(data)
       elif read_client.getSocket().type == socket.SOCK_DGRAM:
@@ -264,10 +264,8 @@ class SocketExecuter():
             d = CLIENT._getWrite()
             l = CLIENT.getSocket().sendto(d[1], d[0])
           elif CLIENT._getType() == "TCP":
-            #we only write 4k at a time because of some ssl problems with:
-            # error:1409F07F:SSL routines:SSL3_WRITE_PENDING:bad write retry
             w = CLIENT._getWrite()
-            l = CLIENT.getSocket().send(w[:4096])
+            l = CLIENT.getSocket().send(w)
             CLIENT._reduceWrite(l)
           elif self.__clients[fileno].TYPE == "CUSTOM":
             l = self.__clients[fileno].WRITER()

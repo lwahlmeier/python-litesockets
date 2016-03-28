@@ -7,7 +7,7 @@ class Client(object):
     """Default init"""
     self.MAXBUFFER = 16384
     self.__write_buff_list = list()
-    self.__write_buff = ""
+    self.__write_buff = bytearray()
     self.__writeBuffSize = 0
 
     self.__read_buff_list = list()
@@ -99,16 +99,20 @@ class Client(object):
         self.__read_buff_list = []
         l = len(data)
       self.__readBuffSize-=l
-      if (self.__readBuffSize+l) >= self.MAXBUFFER and self.__readBuffSize < self.MAXBUFFER:
-        self.__socketExecuter.updateClientOperations(self)
-      return data
     finally:
       self.__readlock.release()
+    self.__socketExecuter.updateClientOperations(self)
+    return data
+
 
   def write(self, data):
+    size = len(data)
+    data_list = []
+    for i in xrange(0,size,1024*64):
+      data_list.append(data[i:i+(1024*64)])
     self.__writelock.acquire()
-    self.__write_buff_list.append(data)
-    self.__writeBuffSize+=len(data)
+    self.__write_buff_list.extend(data_list)
+    self.__writeBuffSize+=size
     self.__writelock.release()
     self.__socketExecuter.updateClientOperations(self)
 
@@ -119,12 +123,13 @@ class Client(object):
       try:
         if  not self.__isClosed:
           self.__isClosed = True
+          
           socketexecuter.noExcept(self.__socket.shutdown, socket.SHUT_RDWR)
           socketexecuter.noExcept(self.__socket.close)
           for cl in self.__closers:
             self.runOnClientThread(cl, args=(self,))
       finally: 
-        self.__readlock.acquire()
+        self.__readlock.release()
       self.getSocketExecuter().updateClientOperations(self)
       
   def isClosed(self):
@@ -151,27 +156,29 @@ class Client(object):
     """this is called by the SocektExecuter once addWrite has added data to write to the socket and the socket is ready to be written to.
      This does not remove any data from the writeBuffer as we will not know how much will be written yet (reduce write)"""
     #done need a lock here since we are not changing anything yet
-    if self.__write_buff == "" and len(self.__write_buff_list) > 0:
-      self.__writelock.acquire()
-      try:
-        self.__write_buff = "".join(self.__write_buff_list)
-        self.__write_buff_list = []
-      finally:
-        self.__writelock.release()
+    self.__writelock.acquire()
+    try:
+      if len(self.__write_buff) == 0 and len(self.__write_buff_list) > 0:
+        self.__write_buff = bytearray(self.__write_buff_list.pop(0))
+        #self.__write_buff_list = []
+    finally:
+      self.__writelock.release()
     return self.__write_buff
 
   def _reduceWrite(self, size):
     """This is called by the SocketExecuter once data is written out to the socket to reduce the amount of data on the writeBuffer"""
-    self.__writelock.acquire()
     try:
+      self.__writelock.acquire()
       self.__writeBuffSize -= size
-      self.__write_buff = self.__write_buff[size:]
+      del self.__write_buff[:size]
       if self.__writeBuffSize == 0:
         self.__socketExecuter.updateClientOperations(self)
     finally:
       self.__writelock.release()
+
+
       
   def _getType(self):
     return self.__TYPE
-  
+
   
