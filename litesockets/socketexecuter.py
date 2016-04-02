@@ -334,6 +334,9 @@ class Stats(object):
     return self.__totalRead
   
   def getTotalWrite(self):
+    """
+    Returns the total bytes writen.
+    """
     return self.__totalWrite
   
   def getReadRate(self):
