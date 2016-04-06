@@ -340,6 +340,9 @@ class Stats(object):
     return self.__totalWrite
   
   def getReadRate(self):
+    """
+    Returns the bytes read per second.
+    """
     X = round(self.__totalRead/(self.__clock.accurate_time() - self.__startTime), 4)
     if X > 0:
       return X
