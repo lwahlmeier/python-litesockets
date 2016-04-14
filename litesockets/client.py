@@ -93,9 +93,11 @@ class Client(object):
     self.__socketExecuter.getScheduler().schedule(task, key=self, args=args, kwargs=kwargs)
 
   def getRead(self):
-    """Called by whoever created the client to get the read... 
-    this should only be called once per __doRead event.  
-    This will return a string with data"""
+    """
+    Returns the data read from this socket.
+    
+    This should be called on the client each time the the onRead callback is ran.
+    """
     self.__readlock.acquire()
     try:
       data = ""
@@ -115,6 +117,11 @@ class Client(object):
 
 
   def write(self, data):
+    """
+    Writes provided data to the socket.  The data must be either a string or bytearray.
+    
+    `data` data to write to the socket.
+    """
     if self.__TYPE == "TCP":
       size = len(data)
       data_list = []
@@ -138,7 +145,9 @@ class Client(object):
       
 
   def close(self):
-    """This closes the socket and should remove the client from the SocketExecuter"""
+    """
+    This closes the socket and should remove the client from the SocketExecuter
+    """
     if  not self.__isClosed:
       self.__readlock.acquire()
       try:
@@ -176,8 +185,11 @@ class Client(object):
 
     
   def _getWrite(self):
-    """this is called by the SocektExecuter once addWrite has added data to write to the socket and the socket is ready to be written to.
-     This does not remove any data from the writeBuffer as we will not know how much will be written yet (reduce write)"""
+    """
+    This is called by the SocektExecuter once the socket can write and data is pending from a write call in the Client
+    
+    This does not remove any data from the writeBuffer as we do not know how much will be written yet (see _reduceWrite)
+    """
     self.__writelock.acquire()
     try:
       if len(self.__write_buff) == 0 and len(self.__write_buff_list) > 0:
@@ -190,7 +202,9 @@ class Client(object):
     return self.__write_buff
 
   def _reduceWrite(self, size):
-    """This is called by the SocketExecuter once data is written out to the socket to reduce the amount of data on the writeBuffer"""
+    """
+    This is called by the SocketExecuter once data is written out to the socket to reduce the amount of data on the writeBuffer
+    """
     try:
       self.__writelock.acquire()
       self.__writeBuffSize -= size

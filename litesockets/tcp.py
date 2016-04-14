@@ -3,6 +3,7 @@ import client
 import server
 
 class TCPClient(client.Client):
+
   def __init__(self, host, port, socketExecuter, use_socket = None):
     self.__host = host
     self.__port = port
@@ -59,7 +60,14 @@ class TCPClient(client.Client):
       self.getSocketExecuter().updateClientOperations(self)
 
 class TCPServer(server.Server):
+  """
+  A TCPServer instance. Notifiying you when new TCPClients connect.
+  """
   def __init__(self, socketExecuter, host, port):
+    """
+    Constructs a new TCPServer.  This should never be created manually instead use createTCPServer
+    on a started SocketExecuter object. 
+    """
     self.__logString = "root.litesockets.TCPServer:"+host+":"+str(port)
     self.__log = logging.getLogger()
     self.__host = host
@@ -72,8 +80,12 @@ class TCPServer(server.Server):
     self.__SUPER.__init__(socketExecuter, self.__socket, "TCP")
     self.__ssl_info = None
     
-  def setSSLInfo(self, certFile, keyFile, doHandshake=True, hostname=None, kwargs={}):
-    self.__ssl_info = {"keyfile":keyFile, "certfile":certFile, "server_side":True, "do_handshake_on_connect":doHandshake, "start":doHandshake}
+  def setSSLInfo(self, **kwargs):
+    """
+    Sets ssl information for this socket. Takes the same arguments used in wrap_socket.  If do_handshake_on_connect is set to true
+    we will do the handshake on the TCPClient immediately otherwise startSSL() will have to be called on the TCPClient to start.
+    """
+    self.__ssl_info = {}
     self.__ssl_info.update(kwargs)
     
     

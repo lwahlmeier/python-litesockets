@@ -350,6 +350,9 @@ class Stats(object):
       return 0 
   
   def getWriteRate(self):
+    """
+    Returns the bytes written per second.
+    """
     X = round(self.__totalWrite/(self.__clock.accurate_time() - self.__startTime), 4)
     if X > 0:
       return X
