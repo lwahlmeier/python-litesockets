@@ -1,4 +1,4 @@
-import select, logging, threading, sys, ssl, errno, socket
+import select, logging, threading, sys, ssl, errno, socket, platform
 from threadly import Scheduler, Clock
 from .client import Client
 from .server import Server
@@ -10,33 +10,245 @@ if not "EPOLLRDHUP" in dir(select):
 
 EMPTY_STRING = ""
 
-
-class EpollSelector():
+class SelectSelector():
   def __init__(self, readCallback, writeCallback, acceptCallback, errorCallback):
-    self.__log = logging.getLogger("root.litesockets.EpollSelector")
-    self.__DEFAULT_READ_POLLS = select.EPOLLIN|select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR
-    self.__DEFAULT_ACCEPT_POLLS = select.EPOLLIN|select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR
-
-    self.__ReadSelector = select.epoll()
-    self.__WriteSelector = select.epoll()
-    self.__AcceptorSelector = select.epoll()
-    self.__running = True
-    self.__log.info("Start __ReadSelector")
+    self.__log = logging.getLogger("root.litesockets.SelectSelector")
+    self.__log.info("Creating basic select selector for: {}".format(platform.system()))
     self.__readCallback = readCallback
     self.__writeCallback = writeCallback
     self.__acceptCallback = acceptCallback
     self.__errorCallback = errorCallback
-    T = threading.Thread(target= self.__doThread, args=(self.__doReads,))
-    T.daemon = True
-    T.start()
-    self.__log.info("Start __WriteSelector")
-    T = threading.Thread(target= self.__doThread, args=(self.__doWrites,))
-    T.daemon = True
-    T.start()
-    self.__log.info("Start __AcceptorSelector")
-    T = threading.Thread(target= self.__doThread, args=(self.__doAcceptor,))
-    T.daemon = True
-    T.start()
+    
+    self.__readClients = set()
+    self.__writeClients = set()
+    self.__acceptServers = set()
+    
+    self.__nb_readClients = set()
+    self.__nb_writeClients = set()
+    self.__nb_acceptServers = set()
+    
+    self.__writeLock = threading.Condition()
+    self.__readLock = threading.Condition()
+    self.__acceptLock = threading.Condition()
+    self.__nbLock = threading.Condition()
+    
+    self.__localExecuter = Scheduler(5) #need 5 thread, all can be blocked at once
+    self.__localExecuter.execute(self.__doReads)
+    self.__localExecuter.execute(self.__doWrites)
+    self.__localExecuter.execute(self.__doAcceptor)
+    self.__running = True
+    
+  def stop(self):
+    self.__running = False
+    
+  def addServer(self, fileno):
+    self.__acceptLock.acquire()
+    self.__acceptServers.add(FileNoWrapper(fileno))
+    self.__acceptLock.release()
+      
+  def removeServer(self, fileno):
+    now = FileNoWrapper(fileno)
+    if now in self.__acceptServers:
+      self.__acceptServers.remove(now)
+    
+  def addReader(self, fileno):
+    now = FileNoWrapper(fileno)
+    if now in self.__readClients or now in self.__nb_readClients:
+      return
+    if self.__readLock.acquire(blocking=False):
+      self.__readClients.add(now)
+      self.__readLock.release()
+    else:
+      self.__nb_readClients.add(now)
+      self.__localExecuter.schedule(self.__tmpClientSelect, delay=0, recurring=False, key="SimpleKey")
+      self.__localExecuter.schedule(self.__update_from_nb_selector, key="UpdateTask")
+      
+  def removeReader(self, fileno):
+    now = FileNoWrapper(fileno)
+    if now in self.__readClients:
+      self.__readClients.remove(now)
+    if now in self.__nb_readClients:
+      self.__nb_readClients.remove(now)
+    
+  def addWriter(self, fileno):
+    now = FileNoWrapper(fileno)
+    if now in self.__writeClients or now in self.__nb_writeClients:
+      return
+    if self.__writeLock.acquire(blocking=False):
+      self.__writeClients.add(now)
+      self.__writeLock.release()
+    else:
+      self.__nb_writeClients.add(now)
+      self.__localExecuter.schedule(self.__tmpClientSelect, key="SimpleKey")
+      self.__localExecuter.schedule(self.__update_from_nb_selector, key="UpdateTask")
+      
+  def removeWriter(self, fileno):
+    now = FileNoWrapper(fileno)
+    if now in self.__writeClients:
+      self.__writeClients.remove(now)
+    if now in self.__nb_writeClients:
+      self.__nb_writeClients.remove(now)
+    
+  def __doThread(self, t):
+    while self.__running:
+      try:
+        t()
+      except Exception as e:
+        self.__log.error("GP Socket Exception: %s: %s"%(t, sys.exc_info()[0]))
+        self.__log.error(e)
+        
+  def __update_from_nb_selector(self):
+    if len(self.__nb_readClients) + len(self.__nb_writeClients) == 0:
+      return
+    else:
+      self.__readLock.acquire()
+      self.__nbLock.acquire()
+      for r in self.__nb_readClients:
+        self.__readClients.add(r)
+      self.__nb_readClients.clear()
+      self.__nbLock.release()
+      self.__readLock.release()
+      
+      self.__writeLock.acquire()
+      self.__nbLock.acquire()
+      for r in self.__nb_writeClients:
+        self.__writeClients.add(r)
+      self.__nb_writeClients.clear()
+      
+      self.__nbLock.release()
+      self.__writeLock.release()
+      
+  def __tmpClientSelect(self):
+    if len(self.__nb_readClients) + len(self.__nb_writeClients) == 0:
+      return
+    self.__nbLock.acquire()
+    rlist, wlist, xlist = select.select(self.__nb_readClients, self.__nb_writeClients, self.__readClients, 0.001)
+    for rdy in rlist:
+      try:
+        self.__readCallback(rdy.fileno())
+      except Exception as e:
+        self.__log.debug("nbRead Error: %s"%(sys.exc_info()[0]))
+        self.__log.debug(e)
+        
+    for rdy in wlist:
+      try:
+        self.__writeCallback(rdy.fileno())
+      except Exception as e:
+        self.__log.debug("nbWrite Error: %s"%(sys.exc_info()[0]))
+        self.__log.debug(e)
+        
+    for bad in xlist:
+      try:
+        self.__errorCallback(bad.fileno())
+      except:
+        self.__log.debug("nberrorCB Error: %s"%(sys.exc_info()[0]))
+        self.__log.debug(e)
+        
+    self.__nbLock.release()
+    if len(self.__nb_readClients) + len(self.__nb_writeClients) > 0:
+      self.__localExecuter.schedule(self.__tmpClientSelect, key="SimpleKey")
+      
+        
+  def __doReads(self):
+    self.__readLock.acquire()
+    rlist, wlist, xlist = select.select(self.__readClients, [], self.__readClients, .1)
+    self.__readLock.release()
+    
+    for rdy in rlist:
+      try:
+        if rdy in self.__readClients:
+          self.__readCallback(rdy.fileno())
+      except Exception as e:
+        self.__log.debug("Read Error: %s"%(sys.exc_info()[0]))
+        self.__log.debug(e)
+        
+    for bad in xlist:
+      try:
+        self.__errorCallback(bad.fileno())
+      except:
+        self.__log.debug("errorCB Error: %s"%(sys.exc_info()[0]))
+        self.__log.debug(e)
+    if self.__running:
+      self.__localExecuter.execute(self.__doReads)
+    
+  def __doWrites(self):
+    self.__writeLock.acquire()
+    rlist, wlist, xlist = select.select([], self.__writeClients,[] , .1)
+    self.__writeLock.release()
+    for rdy in wlist:
+      try:
+        if rdy in self.__writeClients:
+          self.__writeCallback(rdy.fileno())
+      except Exception as e:
+        self.__log.debug("Write Error: %s"%(sys.exc_info()[0]))
+        self.__log.debug(e)
+        self.__writeClients.remove(rdy)
+    if self.__running:
+      self.__localExecuter.execute(self.__doWrites)
+
+  
+  def __doAcceptor(self):
+    self.__acceptLock.acquire()
+    rlist, wlist, xlist = select.select(self.__acceptServers, [], self.__acceptServers, .1)
+    self.__acceptLock.release()
+    for bad in xlist:
+      try:
+        self.__errorCallback(bad.fileno())
+        self.__writeClients.remove(bad)
+      except Exception as e:
+        self.__log.debug("errorCB Error: %s"%(sys.exc_info()[0]))
+        self.__log.debug(e)
+        
+    for rdy in rlist:
+      try:
+        if rdy in self.__acceptServers:
+          self.__acceptCallback(rdy.fileno())
+      except Exception as e:
+        self.__log.debug("Accept Error: %s"%(sys.exc_info()[0]))
+        self.__log.debug(e)
+        self.__writeClients.remove(rdy)
+
+    if self.__running:
+      self.__localExecuter.execute(self.__doAcceptor)
+
+    
+class FileNoWrapper():
+  def __init__(self, fileno):
+    self.__fileno = fileno
+    
+  def __hash__(self):
+    return self.__fileno;
+  
+  def __eq__(self, obj):
+    if isinstance(obj, FileNoWrapper):
+      return self.fileno() == obj.fileno();
+    else:
+      return False
+    
+  def fileno(self):
+    return self.__fileno
+
+class EpollSelector():
+  def __init__(self, readCallback, writeCallback, acceptCallback, errorCallback):
+    self.__log = logging.getLogger("root.litesockets.EpollSelector")
+    self.__log.info("Creating epoll selector for: {}".format(platform.system()))
+    self.__DEFAULT_READ_POLLS = select.EPOLLIN|select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR
+    self.__DEFAULT_ACCEPT_POLLS = select.EPOLLIN|select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR
+    self.__readCallback = readCallback
+    self.__writeCallback = writeCallback
+    self.__acceptCallback = acceptCallback
+    self.__errorCallback = errorCallback
+    
+    self.__ReadSelector = select.epoll()
+    self.__WriteSelector = select.epoll()
+    self.__AcceptorSelector = select.epoll()
+    self.__running = True
+    self.__localExecuter = Scheduler(3)
+    
+    self.__localExecuter.execute(self.__doReads)
+    self.__localExecuter.execute(self.__doWrites)
+    self.__localExecuter.execute(self.__doAcceptor)
+
     
   def stop(self):
     self.__running = False
@@ -89,6 +301,8 @@ class EpollSelector():
       except Exception as e:
         self.__log.debug("Read Error: %s"%(sys.exc_info()[0]))
         self.__log.debug(e)
+    if self.__running:
+      self.__localExecuter.execute(self.__doReads)
         
   def __doWrites(self):
     events = self.__WriteSelector.poll(1)
@@ -102,6 +316,8 @@ class EpollSelector():
       except Exception as e:
         self.__log.debug("Write Error: %s"%(sys.exc_info()[0]))
         self.__log.debug(e)
+    if self.__running:
+      self.__localExecuter.execute(self.__doWrites)
           
 
   def __doAcceptor(self):
@@ -116,6 +332,8 @@ class EpollSelector():
       except Exception as e:
         self.__log.debug("Accept Error: %s"%(sys.exc_info()[0]))
         self.__log.debug(e)
+    if self.__running:
+      self.__localExecuter.execute(self.__doAcceptor)
         
   
 
@@ -128,13 +346,15 @@ class SocketExecuter():
   It also does all the callbacks when a read or new socket connects.  Having a SocketExecuter is required for all litesockets 
   Connections, and in general only 1 should be needed per process.
   """
-  def __init__(self, threads=5, scheduler=None):
+  def __init__(self, threads=5, scheduler=None, forcePlatform=None):
     """
     Constructs a new SocketExecuter
     
     `threads` used to set the number of threads used when creating a Scheduler when no Scheduler is provided.
     
     `scheduler` this scheduler will be used with the SocketExecuters client/server callbacks. 
+    
+    `forcePlatform` this sets the detected platform, this can be used to switch the selector object made.
     """
     self.__log = logging.getLogger("root.litesockets.SocketExecuter")
     self.__clients = dict()
@@ -146,7 +366,12 @@ class SocketExecuter():
     else:
       self.__executor = scheduler
     self.__stats = Stats()
-    self.__selector = EpollSelector(self.__clientRead, self.__clientWrite, self.__serverAccept, self.__socketerrors)
+    if forcePlatform == None:
+      forcePlatform = platform.system()
+    if forcePlatform.lower().find("linux") > -1:
+      self.__selector = EpollSelector(self.__clientRead, self.__clientWrite, self.__serverAccept, self.__socketerrors)
+    else:
+      self.__selector = SelectSelector(self.__clientRead, self.__clientWrite, self.__serverAccept, self.__socketerrors)
     self.__running = True
 
   def getScheduler(self):
@@ -311,6 +536,8 @@ class SocketExecuter():
         if data != EMPTY_STRING:
           read_client._addRead(data)
           data_read += len(data)
+        else:
+          read_client.close()
       elif read_client.getSocket().type == socket.SOCK_DGRAM:
         data = ""
         while data is not None:
@@ -353,7 +580,7 @@ class SocketExecuter():
         l = self.__clients[fileno].WRITER()
       self.__stats._addWrite(l)
     except Exception as e:
-      self.__log.debug("Write Error: %s"%(sys.exc_info()[0]))
+      self.__log.debug("clientWrite Error: %s"%(sys.exc_info()[0]))
       self.__log.debug(e)
 
   def __serverErrors(self, server, fileno):

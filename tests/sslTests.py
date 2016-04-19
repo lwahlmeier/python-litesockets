@@ -14,21 +14,21 @@ log.setLevel(logging.DEBUG)
 
 class TestSSL(unittest.TestCase):
   def setUp(self):
-    self.__socketExecuter = litesockets.SocketExecuter()
+    self.SE = litesockets.SocketExecuter()
 
   def tearDown(self):
-    self.__socketExecuter.stop()
+    self.SE.stop()
 
   def test_SimpleSSLSendTest(self):
-    ta = testClass(self.__socketExecuter)
-    server = self.__socketExecuter.createTCPServer("localhost", 0)
+    ta = testClass(self.SE)
+    server = self.SE.createTCPServer("localhost", 0)
     server.setSSLInfo(certfile="%s/tmp.crt"%(DIRNAME), keyfile="%s/tmp.key"%(DIRNAME), do_handshake_on_connect=True)
     server.setOnClient(ta.accept)
     server.start()
     PORT = server.getSocket().getsockname()[1]
 
-    client = self.__socketExecuter.createTCPClient("localhost", PORT)
-    test_client = testClass(self.__socketExecuter)
+    client = self.SE.createTCPClient("localhost", PORT)
+    test_client = testClass(self.SE)
     client.setReader(test_client.read)
     client.enableSSL()
     print "connect"
@@ -51,25 +51,25 @@ class TestSSL(unittest.TestCase):
     client.close()
     server.close()
 
-    waitTill(lambda X: len(self.__socketExecuter.getClients()) > X, 0, 500)
-    waitTill(lambda X: len(self.__socketExecuter.getServers()) > X, 0, 500)
-    self.assertEquals(0, len(self.__socketExecuter.getClients()))
-    self.assertEquals(0, len(self.__socketExecuter.getServers()))
+    waitTill(lambda X: len(self.SE.getClients()) > X, 0, 500)
+    waitTill(lambda X: len(self.SE.getServers()) > X, 0, 500)
+    self.assertEquals(0, len(self.SE.getClients()))
+    self.assertEquals(0, len(self.SE.getServers()))
 
 
   def test_SSLsendLots(self):
     LOOPS = 500
     STR_SIZE = len(TEST_STRING)
     BYTES = STR_SIZE*LOOPS
-    test = testClass(self.__socketExecuter)
-    server = self.__socketExecuter.createTCPServer("localhost", 0)
+    test = testClass(self.SE)
+    server = self.SE.createTCPServer("localhost", 0)
     server.setSSLInfo(certfile="%s/tmp.crt"%(DIRNAME), keyfile="%s/tmp.key"%(DIRNAME), do_handshake_on_connect=True)
     server.setOnClient(test.accept)
     server.start()
     PORT = server.getSocket().getsockname()[1]
 
-    client = self.__socketExecuter.createTCPClient("localhost", PORT)
-    test_client = testClass(self.__socketExecuter)
+    client = self.SE.createTCPClient("localhost", PORT)
+    test_client = testClass(self.SE)
     client.setReader(test_client.read)
     client.enableSSL()
     client.connect()
@@ -92,5 +92,12 @@ class TestSSL(unittest.TestCase):
     self.assertEquals(hashlib.sha256("".join(test_client.reads)).hexdigest(), newSha)
 
     
+class TestSSLSelect(TestSSL):
+  def setUp(self):
+    self.SE = litesockets.SocketExecuter(forcePlatform="win")
+
+  def tearDown(self):
+    self.SE.stop()
+  
 
 

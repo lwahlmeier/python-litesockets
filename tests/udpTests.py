@@ -13,19 +13,19 @@ log.setLevel(logging.DEBUG)
 class TestUdp(unittest.TestCase):
 
   def setUp(self):
-    self.__socketExecuter = litesockets.SocketExecuter()
+    self.SE = litesockets.SocketExecuter()
 
   def tearDown(self):
-    self.__socketExecuter.stop()
+    self.SE.stop()
 
   def test_SimpleUdpSendTest(self):
-    ta = testClass(self.__socketExecuter)
-    server = self.__socketExecuter.createUDPServer("localhost", 0)
+    ta = testClass(self.SE)
+    server = self.SE.createUDPServer("localhost", 0)
     server.setOnClient(ta.accept)
     server.start()
     PORT = server.getSocket().getsockname()[1]
-    client = self.__socketExecuter.createUDPServer("localhost", 0)
-    cta = testClass(self.__socketExecuter, name="OTHER")
+    client = self.SE.createUDPServer("localhost", 0)
+    cta = testClass(self.SE, name="OTHER")
     client.setOnClient(cta.accept)
     client.start()
     client.write([("localhost", PORT), TEST_STRING])
@@ -48,10 +48,10 @@ class TestUdp(unittest.TestCase):
     server.close()
     print "--------Close Called!"
     c = 0
-    while len(self.__socketExecuter.getClients()) > 0 and c < 500:
+    while len(self.SE.getClients()) > 0 and c < 500:
       time.sleep(.01)
       c+=1
-    self.assertEquals(0, len(self.__socketExecuter.getClients()))
+    self.assertEquals(0, len(self.SE.getClients()))
     
 
   def test_UdpSendLots(self):
@@ -59,16 +59,16 @@ class TestUdp(unittest.TestCase):
     LOOPS = 1000
     STR_SIZE = len(LTEST_STRING)
     BYTES = STR_SIZE*LOOPS
-    ta = testClass(self.__socketExecuter)
-    server = self.__socketExecuter.createUDPServer("localhost", 0)
+    ta = testClass(self.SE)
+    server = self.SE.createUDPServer("localhost", 0)
     server.setOnClient(ta.accept)
     server.start()
     server.stop()
     server.start()
     PORT = server.getSocket().getsockname()[1]
     
-    client = self.__socketExecuter.createUDPServer("localhost", 0)
-    cta = testClass(self.__socketExecuter)
+    client = self.SE.createUDPServer("localhost", 0)
+    cta = testClass(self.SE)
     client.setOnClient(cta.accept)
     #client.addCloseListener(cta.accept)
     client.start()
@@ -115,9 +115,16 @@ class TestUdp(unittest.TestCase):
     client.close()
     server.close()
     c = 0
-    while len(self.__socketExecuter.getClients()) > 0 and c < 500:
+    while len(self.SE.getClients()) > 0 and c < 500:
       time.sleep(.01)
       c+=1
-    self.assertEquals(len(self.__socketExecuter.getClients()), 0)
+    self.assertEquals(len(self.SE.getClients()), 0)
     
 
+class TestUdpSelect(TestUdp):
+
+  def setUp(self):
+    self.SE = litesockets.SocketExecuter(forcePlatform="win")
+
+  def tearDown(self):
+    self.SE.stop()

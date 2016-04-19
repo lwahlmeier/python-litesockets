@@ -1,4 +1,4 @@
-import unittest, time, hashlib, logging
+import unittest, time, hashlib, logging, platform
 import litesockets
 from threadly import Scheduler
 from utils import testClass, waitTill
@@ -8,19 +8,31 @@ log = logging.getLogger("root")
 log.setLevel(logging.DEBUG)
 
 
+
+  
+
 class TestSE(unittest.TestCase):
+  
+  def setUp(self):
+    self.SCH = Scheduler(10)
+    if platform.system().lower().find("linux"):
+      self.SE = litesockets.SocketExecuter(scheduler=self.SCH, forcePlatform="linux")
+    else:
+      self.SE = litesockets.SocketExecuter(scheduler=self.SCH)
+    
+  def tearDown(self):
+    self.SE.stop()
+    self.SCH.shutdown_now()
 
   def test_SE_ServerStartMany(self):
-    sch = Scheduler(10)
-    SE = litesockets.SocketExecuter(scheduler=sch)
     SE1 = litesockets.SocketExecuter()
-    self.assertTrue(SE.isRunning(), "SE not running")
+    self.assertTrue(self.SE.isRunning(), "SE not running")
     self.assertTrue(SE1.isRunning(), "SE1 not running")
-    SE.stop()
+    self.SE.stop()
     SE1.stop()
-    self.assertFalse(SE.isRunning(), "SE not running")
+    self.assertFalse(self.SE.isRunning(), "SE not running")
     self.assertFalse(SE1.isRunning(), "SE1 not running")
-    sch.shutdown_now()
+    self.SCH.shutdown_now()
 
   def test_SE_ClientAddRemove(self):
     CLIENT_NUM = 1
@@ -147,6 +159,15 @@ class TestSE(unittest.TestCase):
     self.assertEquals(cta.read_len, 200)
     SE.stop()
 
+class TestSESelect(TestSE):
+  def setUp(self):
+    self.SCH = Scheduler(10)
+    self.SE = litesockets.SocketExecuter(scheduler=self.SCH, forcePlatform="win")
+
+  def tearDown(self):
+    self.SE.stop()
+    self.SCH.shutdown_now()
+ 
 
 if __name__ == '__main__':
   unittest.main()

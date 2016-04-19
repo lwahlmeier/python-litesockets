@@ -97,5 +97,10 @@ class TestTcp(unittest.TestCase):
     self.assertTrue(test.clients[0].getStats().getWriteRate() > 0.0)
 
     
+class TestTcpSelect(TestTcp):
+  def setUp(self):
+    self.socketExecuter = litesockets.SocketExecuter(forcePlatform="win")
 
+  def tearDown(self):
+    self.socketExecuter.stop()
 
