@@ -38,13 +38,17 @@ class TCPClient(client.Client):
     return self.__socket
 
     
-  def enableSSL(self, start=False, *args, **kwargs):
+  def enableSSL(self, **kwargs):
     if not self.__sslEnabled:
       self.__sslEnabled = True
-      self.__sslArgs = (args, kwargs)
-      self.__startSSL = start
-      self.__sslArgs[1]["do_handshake_on_connect"] = True
-      if start and self.__connected:
+      self.__sslArgs = (kwargs)
+      if "do_handshake_on_connect" in kwargs:
+        self.__startSSL = kwargs["do_handshake_on_connect"]
+      else:
+        self.__startSSL = False
+      #we always set this to true because when we wrap we want it to start
+      self.__sslArgs["do_handshake_on_connect"] = True
+      if self.__startSSL and self.__connected:
         self.startSSL()
     else:
       raise Exception("cant set ssl again on socket!")
@@ -54,7 +58,9 @@ class TCPClient(client.Client):
     if self.__connected:
       self.getSocketExecuter().updateClientOperations(self, disable=True)
       self.__socket.setblocking(1)
-      tmpSocket = ssl.wrap_socket(self.__plainSocket, *self.__sslArgs[0], **self.__sslArgs[1])
+      print "wrapping"
+      tmpSocket = ssl.wrap_socket(self.__plainSocket, **self.__sslArgs)
+      print "wrapping done"
       self.__socket = tmpSocket
       self.__socket.setblocking(0)
       self.getSocketExecuter().updateClientOperations(self)
@@ -85,6 +91,7 @@ class TCPServer(server.Server):
     Sets ssl information for this socket. Takes the same arguments used in wrap_socket.  If do_handshake_on_connect is set to true
     we will do the handshake on the TCPClient immediately otherwise startSSL() will have to be called on the TCPClient to start.
     """
+    kwargs['server_side'] = True
     self.__ssl_info = {}
     self.__ssl_info.update(kwargs)
     

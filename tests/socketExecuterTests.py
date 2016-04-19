@@ -23,7 +23,7 @@ class TestSE(unittest.TestCase):
     sch.shutdown_now()
 
   def test_SE_ClientAddRemove(self):
-    CLIENT_NUM = 5
+    CLIENT_NUM = 1
     SE = litesockets.SocketExecuter()
     ta = testClass(SE)
     server = SE.createTCPServer("localhost", 0)
@@ -44,11 +44,15 @@ class TestSE(unittest.TestCase):
       self.assertEquals(len(SE.getClients()), (len(clients)*2)+2)
       clients.append(client)
       self.assertEquals(len(SE.getClients()), len(clients)*2)
+      
+#     for i in xrange(CLIENT_NUM):
+#       clients[i].write("TEST")
 
     for i in xrange(CLIENT_NUM):
+      print "-----", len(SE.getClients()), (CLIENT_NUM*2)
       clients[i].close()
       for Q in xrange(500):
-        print len(SE.getClients()), (CLIENT_NUM*2)-((i+1)*2)
+        print "-----", len(SE.getClients()), (CLIENT_NUM*2)-((i+1)*2)
         if len(SE.getClients()) == (CLIENT_NUM*2)-((i+1)*2):
           break
         else:

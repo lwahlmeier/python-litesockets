@@ -22,7 +22,7 @@ class TestSSL(unittest.TestCase):
   def test_SimpleSSLSendTest(self):
     ta = testClass(self.__socketExecuter)
     server = self.__socketExecuter.createTCPServer("localhost", 0)
-    server.setSSLInfo("%s/tmp.crt"%(DIRNAME), "%s/tmp.key"%(DIRNAME))
+    server.setSSLInfo(certfile="%s/tmp.crt"%(DIRNAME), keyfile="%s/tmp.key"%(DIRNAME), do_handshake_on_connect=True)
     server.setOnClient(ta.accept)
     server.start()
     PORT = server.getSocket().getsockname()[1]
@@ -30,11 +30,13 @@ class TestSSL(unittest.TestCase):
     client = self.__socketExecuter.createTCPClient("localhost", PORT)
     test_client = testClass(self.__socketExecuter)
     client.setReader(test_client.read)
-    client.enableSSL(start=True)
+    client.enableSSL()
+    print "connect"
+    client.startSSL()
     client.connect()
-
+    print "connect done"
     client.write(TEST_STRING)
-
+    print "WAIT"
     waitTill(lambda X: ta.read_len < X, len(TEST_STRING) , 500)
 
     self.assertEquals(ta.reads[0], TEST_STRING)
@@ -61,7 +63,7 @@ class TestSSL(unittest.TestCase):
     BYTES = STR_SIZE*LOOPS
     test = testClass(self.__socketExecuter)
     server = self.__socketExecuter.createTCPServer("localhost", 0)
-    server.setSSLInfo("%s/tmp.crt"%(DIRNAME), "%s/tmp.key"%(DIRNAME))
+    server.setSSLInfo(certfile="%s/tmp.crt"%(DIRNAME), keyfile="%s/tmp.key"%(DIRNAME), do_handshake_on_connect=True)
     server.setOnClient(test.accept)
     server.start()
     PORT = server.getSocket().getsockname()[1]
@@ -69,8 +71,9 @@ class TestSSL(unittest.TestCase):
     client = self.__socketExecuter.createTCPClient("localhost", PORT)
     test_client = testClass(self.__socketExecuter)
     client.setReader(test_client.read)
-    client.enableSSL(start=True)
+    client.enableSSL()
     client.connect()
+    client.startSSL()
     baseSha = hashlib.sha256()
     for i in xrange(0, LOOPS):
       baseSha.update(TEST_STRING)
