@@ -33,10 +33,11 @@ class SelectSelector():
     self.__nbLock = threading.Condition()
     
     self.__localExecuter = Scheduler(5) #need 5 thread, all can be blocked at once
+    self.__running = True
     self.__localExecuter.execute(self.__doReads)
     self.__localExecuter.execute(self.__doWrites)
     self.__localExecuter.execute(self.__doAcceptor)
-    self.__running = True
+    
     
   def stop(self):
     self.__running = False
@@ -150,8 +151,12 @@ class SelectSelector():
       
         
   def __doReads(self):
+    rlist = []
+    wlist = []
+    xlist = []
     self.__readLock.acquire()
-    rlist, wlist, xlist = select.select(self.__readClients, [], self.__readClients, .1)
+    if len(self.__readClients) > 0:
+      rlist, wlist, xlist = select.select(self.__readClients, [], self.__readClients, .1)
     self.__readLock.release()
     
     for rdy in rlist:
@@ -172,8 +177,12 @@ class SelectSelector():
       self.__localExecuter.execute(self.__doReads)
     
   def __doWrites(self):
+    rlist = []
+    wlist = []
+    xlist = []
     self.__writeLock.acquire()
-    rlist, wlist, xlist = select.select([], self.__writeClients,[] , .1)
+    if len(self.__writeClients) > 0:
+      rlist, wlist, xlist = select.select([], self.__writeClients,[] , .1)
     self.__writeLock.release()
     for rdy in wlist:
       try:
@@ -188,8 +197,12 @@ class SelectSelector():
 
   
   def __doAcceptor(self):
+    rlist = []
+    wlist = []
+    xlist = []
     self.__acceptLock.acquire()
-    rlist, wlist, xlist = select.select(self.__acceptServers, [], self.__acceptServers, .1)
+    if len(self.__acceptServers) > 0:
+      rlist, wlist, xlist = select.select(self.__acceptServers, [], self.__acceptServers, .1)
     self.__acceptLock.release()
     for bad in xlist:
       try:
@@ -539,12 +552,16 @@ class SocketExecuter():
         else:
           read_client.close()
       elif read_client.getSocket().type == socket.SOCK_DGRAM:
-        data = ""
-        while data is not None:
+        data = EMPTY_STRING
+        try:
           data, addr = read_client.getSocket().recvfrom(65536)
-          if data != EMPTY_STRING:
-            read_client.runOnClientThread(read_client._addRead, args=([addr, data],))
-            data_read+=len(data)
+        except socket.error, e:
+          print data, e
+          if e.args[0] != errno.EWOULDBLOCK:
+            raise e
+        if data != EMPTY_STRING:
+          read_client.runOnClientThread(read_client._addRead, args=([addr, data],))
+          data_read+=len(data)
       self.__stats._addRead(data_read)
       return len(data)
     except ssl.SSLError as err:
