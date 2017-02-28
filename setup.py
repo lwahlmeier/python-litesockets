@@ -2,7 +2,7 @@
 from setuptools import setup
 
 
-VERSION = "0.9.0"
+VERSION = "0.7.0"
 
 setup (# Distribution meta-data
        name = "litesockets",
@@ -14,7 +14,7 @@ setup (# Distribution meta-data
        test_suite = "tests",
        license = "unlicense",
        description = "A multi threaded socket library for python",
-       install_requires = ['threadly>=0.7.0'],
+       install_requires = ['threadly>=0.7.1'],
        packages =  ['litesockets'],
        keywords = ["networking"],
        classifiers=[

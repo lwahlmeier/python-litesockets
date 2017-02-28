@@ -8,13 +8,23 @@ class Server(object):
     self.__closed = False;
     self.__closers = list()
     self.__acceptor = None
-    
+    self.__fd = None
+    if self.__socket != None:
+      self.__fd = socket.fileno()
+
   def setOnClient(self, acceptor):
     """
     Sets the onClient callback.  Should be a function pointer taking 1 argument for the 
     new Client object created by this Server.
     """
     self.__acceptor = acceptor
+
+  def getFileDesc(self):
+    """
+    Returns the FileDescriptor number for this client.
+    """
+    return self.__fd
+
     
   def _getType(self):
     return self.__TYPE
@@ -67,8 +77,13 @@ class Server(object):
     if not self.__closed:
       self.__closed = True
       try:
-        self.__socket.shutdown(socket.SHUT_RDWR)
-      except:
+        self.__socket.close()
+        #self.__socket.shutdown(socket.SHUT_RDWR)
+        #try:
+        #except Exception as e:
+        #  pass
+ 
+      except Exception as e:
         pass
       for cl in self.__closers:
         self.__socketExecuter.getScheduler().execute(cl, args=(self,))

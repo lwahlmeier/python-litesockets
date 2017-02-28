@@ -1,5 +1,13 @@
+from __future__ import absolute_import
 import threading, socket
-import socketexecuter
+from .stats import Stats
+from .stats import noExcept
+
+try:
+  xrange(1)
+except:
+  xrange=range
+
 
 class Client(object):
 
@@ -22,13 +30,13 @@ class Client(object):
     self.__TYPE = TYPE
     self.__socket = socket
     self.__fd = None
-    self.__stats = socketexecuter.Stats()
+    self.__stats = Stats()
     if self.__socket != None:
       self.__fd = socket.fileno()
     
   def connect(self):
     raise Exception("Not Implemented!")
-  
+
   def getFileDesc(self):
     """
     Returns the FileDescriptor number for this client.
@@ -106,7 +114,7 @@ class Client(object):
         data = self.__read_buff_list.pop(0)
         l = len(data)
       else:
-        data = "".join(self.__read_buff_list)
+        data = b''.join(self.__read_buff_list)
         self.__read_buff_list = []
         l = len(data)
       self.__readBuffSize-=l
@@ -123,6 +131,8 @@ class Client(object):
     `data` data to write to the socket.
     """
     if self.__TYPE == "TCP":
+      if type(data) is str:
+        data = data.encode("utf-8")
       size = len(data)
       data_list = []
       for i in xrange(0,size,1024*64):
@@ -135,6 +145,8 @@ class Client(object):
         self.__writelock.release()
       self.__socketExecuter.updateClientOperations(self)
     elif self.__TYPE == "UDP":
+      if type(data[1]) is str:
+        data[1] = data[1].encode("utf-8")
       try:
         self.__writelock.acquire()
         self.__write_buff_list.append(data)
@@ -149,13 +161,15 @@ class Client(object):
     This closes the socket and should remove the client from the SocketExecuter
     """
     if  not self.__isClosed:
+      self.getSocketExecuter().updateClientOperations(self, disable=True)
       self.__readlock.acquire()
       try:
         if  not self.__isClosed:
           self.__isClosed = True
           
-          socketexecuter.noExcept(self.__socket.shutdown, socket.SHUT_RDWR)
-          socketexecuter.noExcept(self.__socket.close)
+          if self.__socket is not None:
+            noExcept(self.__socket.shutdown, socket.SHUT_RDWR)
+            noExcept(self.__socket.close)
           for cl in self.__closers:
             self.runOnClientThread(cl, args=(self,))
       finally: 
@@ -194,7 +208,8 @@ class Client(object):
     try:
       if len(self.__write_buff) == 0 and len(self.__write_buff_list) > 0:
         if self.__TYPE == "TCP":
-          self.__write_buff = bytearray(self.__write_buff_list.pop(0))
+          self.__write_buff = bytearray(b''.join(self.__write_buff_list))
+          self.__write_buff_list = []
         if self.__TYPE == "UDP":
           self.__write_buff = self.__write_buff_list.pop(0)
     finally:

@@ -1,15 +1,17 @@
+from __future__ import print_function
 import unittest, time, hashlib, logging, platform
 import litesockets
 from threadly import Scheduler
-from utils import testClass, waitTill
+from .utils import testClass, waitTill
+
+try:
+    xrange(1)
+except:
+    xrange = range
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(name)s - %(message)s")
 log = logging.getLogger("root")
 log.setLevel(logging.DEBUG)
-
-
-
-  
 
 class TestSE(unittest.TestCase):
   
@@ -41,7 +43,6 @@ class TestSE(unittest.TestCase):
     clients = list()
 
     for i in xrange(CLIENT_NUM):
-      print PORT, type(PORT)
       client = self.SE.createTCPClient("localhost", PORT)
       client.connect()
       for i in xrange(500):
@@ -49,25 +50,26 @@ class TestSE(unittest.TestCase):
           break
         else:
           time.sleep(.01)
-      self.assertEquals(len(self.SE.getClients()), (len(clients)*2)+2)
+      self.assertEqual(len(self.SE.getClients()), (len(clients)*2)+2)
       clients.append(client)
-      self.assertEquals(len(self.SE.getClients()), len(clients)*2)
+      self.assertEqual(len(self.SE.getClients()), len(clients)*2)
       
 #     for i in xrange(CLIENT_NUM):
 #       clients[i].write("TEST")
 
     for i in xrange(CLIENT_NUM):
-      print "-----", len(self.SE.getClients()), (CLIENT_NUM*2)
       clients[i].close()
       for Q in xrange(500):
-        print "-----", len(self.SE.getClients()), (CLIENT_NUM*2)-((i+1)*2)
         if len(self.SE.getClients()) == (CLIENT_NUM*2)-((i+1)*2):
           break
         else:
           time.sleep(.1)
           
-      self.assertEquals(len(self.SE.getClients()), (CLIENT_NUM*2)-((i+1)*2))
-    self.assertEquals(len(self.SE.getClients()), 0)
+      self.assertEqual(len(self.SE.getClients()), (CLIENT_NUM*2)-((i+1)*2))
+    self.assertEqual(len(self.SE.getClients()), 0)
+
+    server.stop()
+    server.close()
 
     self.SE.stop()
 
@@ -83,24 +85,24 @@ class TestSE(unittest.TestCase):
       server.start()
       testA.append(ta)
       servers.append(server)
-      self.assertEquals(len(self.SE.getServers()), i+1)
+      self.assertEqual(len(self.SE.getServers()), i+1)
 
     for i in xrange(SERVER_NUM):
       servers[i].close()
       c = 0
       while len(self.SE.getServers()) > len(servers)-(i+1) or c > 500:
-        print len(self.SE.getServers()), len(servers)-(i+1)
         time.sleep(.01)
         c+=1
-      self.assertEquals(len(self.SE.getServers()), len(servers)-(i+1))
+      self.assertEqual(len(self.SE.getServers()), len(servers)-(i+1))
 
     c = 0
     while len(self.SE.getServers()) > 0 or c > 500:
       time.sleep(.01)
       c+=1
-    self.assertEquals(len(self.SE.getServers()), 0)
+    self.assertEqual(len(self.SE.getServers()), 0)
     self.SE.startServer("TEST")
-    self.assertEquals(len(self.SE.getServers()), 0)
+    self.assertEqual(len(self.SE.getServers()), 0)
+
     self.SE.stop()
 
   def test_SE_Stats(self):
@@ -116,11 +118,13 @@ class TestSE(unittest.TestCase):
     waitTill(lambda X: len(ta.clients) < X, 1, 500)
     client.write("X"*1000)
     waitTill(lambda X: ta.read_len < X, 1000, 500)
-    self.assertEquals(1000, ta.read_len)
-    self.assertEquals(1000, self.SE.getStats().getTotalRead())
-    self.assertEquals(1000, self.SE.getStats().getTotalWrite())
+    self.assertEqual(1000, ta.read_len)
+    self.assertEqual(1000, self.SE.getStats().getTotalRead())
+    self.assertEqual(1000, self.SE.getStats().getTotalWrite())
     self.assertTrue(1000, self.SE.getStats().getReadRate() > 0.0)
     self.assertTrue(1000, self.SE.getStats().getWriteRate() > 0.0)
+    server.close()
+    client.close()
     
 
   def test_SE_ClientMaxReads(self):
@@ -139,17 +143,15 @@ class TestSE(unittest.TestCase):
     while len(ta.clients) <= 0 and c < 500:
       time.sleep(.01)
       c+=1
-    self.assertEquals(len(ta.clients), 1)
+    self.assertEqual(len(ta.clients), 1)
     ta.clients[0].MAXBUFFER=20
     for i in xrange(20):
-      print "write", 1
       ta.clients[0].write("T"*10)
     c = 0
     while cta.read_len < 200 and c < 500:
-      print "waiting", cta.read_len
       time.sleep(.01)
       c+=1
-    self.assertEquals(cta.read_len, 200)
+    self.assertEqual(cta.read_len, 200)
     self.SE.stop()
 
 class TestSESelect(TestSE):
@@ -164,4 +166,3 @@ class TestSESelect(TestSE):
 
 if __name__ == '__main__':
   unittest.main()
-

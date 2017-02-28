@@ -1,14 +1,22 @@
-import select, logging, threading, sys, ssl, errno, socket, platform
+import select, logging, threading, sys, ssl, errno, socket, platform, time
 from threadly import Scheduler, Clock
+from .stats import Stats
+from .stats import noExcept
 from .client import Client
 from .server import Server
 from .tcp import TCPClient, TCPServer
 from .udp import UDPServer
 
+try:
+    xrange(1)
+except:
+    xrange = range
+
+
 if not "EPOLLRDHUP" in dir(select):
   select.EPOLLRDHUP = 0x2000
 
-EMPTY_STRING = ""
+EMPTY_STRING = b''
 
 class SelectSelector():
   def __init__(self, readCallback, writeCallback, acceptCallback, errorCallback):
@@ -41,6 +49,7 @@ class SelectSelector():
     
   def stop(self):
     self.__running = False
+    self.__localExecuter.shutdown_now()
     
   def addServer(self, fileno):
     self.__acceptLock.acquire()
@@ -122,8 +131,16 @@ class SelectSelector():
   def __tmpClientSelect(self):
     if len(self.__nb_readClients) + len(self.__nb_writeClients) == 0:
       return
+    rlist = []
+    wlist = []
+    xlist = []
     self.__nbLock.acquire()
-    rlist, wlist, xlist = select.select(self.__nb_readClients, self.__nb_writeClients, self.__readClients, 0.001)
+    try:
+      rlist, wlist, xlist = select.select(self.__nb_readClients, self.__nb_writeClients, self.__readClients, 0.001)
+    except:
+      #We sometimes throw here when a client is removed from the set during the loop
+      pass
+
     for rdy in rlist:
       try:
         self.__readCallback(rdy.fileno())
@@ -156,13 +173,23 @@ class SelectSelector():
     xlist = []
     self.__readLock.acquire()
     if len(self.__readClients) > 0:
-      rlist, wlist, xlist = select.select(self.__readClients, [], self.__readClients, .1)
+      try:
+        rlist, wlist, xlist = select.select(self.__readClients, [], self.__readClients, .1)
+      except Exception as e:
+        #We sometimes throw here when a client is removed from the set during the loop
+        pass
+    else:
+      time.sleep(.1)
     self.__readLock.release()
     
     for rdy in rlist:
       try:
         if rdy in self.__readClients:
           self.__readCallback(rdy.fileno())
+      except IOError as e:
+        if e.errno != errno.EBADF:
+          self.__log.error("Unknown error in Selector Read")
+          self.__log.error(e, exc_info=True)
       except Exception as e:
         self.__log.debug("Read Error: %s"%(sys.exc_info()[0]))
         self.__log.debug(e)
@@ -182,7 +209,13 @@ class SelectSelector():
     xlist = []
     self.__writeLock.acquire()
     if len(self.__writeClients) > 0:
-      rlist, wlist, xlist = select.select([], self.__writeClients,[] , .1)
+      try:
+        rlist, wlist, xlist = select.select([], self.__writeClients,[] , .1)
+      except Exception as e:
+        #We sometimes throw here when a client is removed from the set during the loop
+        pass
+    else:
+      time.sleep(.1)
     self.__writeLock.release()
     for rdy in wlist:
       try:
@@ -202,7 +235,13 @@ class SelectSelector():
     xlist = []
     self.__acceptLock.acquire()
     if len(self.__acceptServers) > 0:
-      rlist, wlist, xlist = select.select(self.__acceptServers, [], self.__acceptServers, .1)
+      try:
+        rlist, wlist, xlist = select.select(self.__acceptServers, [], self.__acceptServers, .1)
+      except:
+        #We sometimes throw here when a server is removed from the set during the loop
+        pass
+    else:
+      time.sleep(.1)
     self.__acceptLock.release()
     for bad in xlist:
       try:
@@ -219,6 +258,7 @@ class SelectSelector():
       except Exception as e:
         self.__log.debug("Accept Error: %s"%(sys.exc_info()[0]))
         self.__log.debug(e)
+        logging.exception("")
         self.__writeClients.remove(rdy)
 
     if self.__running:
@@ -265,6 +305,7 @@ class EpollSelector():
     
   def stop(self):
     self.__running = False
+    self.__localExecuter.shutdown_now()
     
   def addServer(self, fileno):
     try:
@@ -345,6 +386,7 @@ class EpollSelector():
       except Exception as e:
         self.__log.debug("Accept Error: %s"%(sys.exc_info()[0]))
         self.__log.debug(e)
+        logging.exception("")
     if self.__running:
       self.__localExecuter.execute(self.__doAcceptor)
         
@@ -369,7 +411,7 @@ class SocketExecuter():
     
     `forcePlatform` this sets the detected platform, this can be used to switch the selector object made.
     """
-    self.__log = logging.getLogger("root.litesockets.SocketExecuter")
+    self.__log = logging.getLogger("root.litesockets.SocketExecuter:{}".format(id(self)))
     self.__clients = dict()
     self.__servers = dict()
     self.__internalExec = None
@@ -397,10 +439,17 @@ class SocketExecuter():
     """
     Stops the SocketExecuter, this will close all clients/servers created from it.
     """
+    self.__log.info("Shutting Down!")
     self.__selector.stop()
     self.__running = False
     if self.__internalExec != None:
       self.__internalExec.shutdown_now()
+    for i in list(self.__clients.values()):
+      self.__log.debug("Closing Client:{}".format(i))
+      noExcept(i.close)
+    for i in list(self.__servers.values()):
+      self.__log.debug("Closing Server:{}".format(i))
+      noExcept(i.close)
       
   def isRunning(self):
     """
@@ -461,7 +510,7 @@ class SocketExecuter():
     """
     
     c = TCPClient(host, port, self, use_socket=use_socket)
-    self.__clients[c.getSocket().fileno()] = c
+    self.__clients[c.getFileDesc()] = c
     c.addCloseListener(self.__closeClient)
     return c
         
@@ -475,7 +524,7 @@ class SocketExecuter():
     """
     
     s = TCPServer(self, host, port)
-    self.__servers[s.getSocket().fileno()] = s
+    self.__servers[s.getFileDesc()] = s
     s.addCloseListener(self.__closeServer)
     return s
   
@@ -502,9 +551,9 @@ class SocketExecuter():
     `server` the server to start listening on.
     """
     
-    if isinstance(server, Server) and server.getSocket().fileno() in self.__servers:
-      self.__selector.addServer(server.getSocket().fileno())
-      self.__log.info("Added New Server")
+    if isinstance(server, Server) and server.getFileDesc() in self.__servers:
+      self.__selector.addServer(server.getFileDesc())
+      self.__log.info("Started New Server:{}".format(server))
 
   def stopServer(self, server):
     """
@@ -512,8 +561,8 @@ class SocketExecuter():
     
     `server` the server to start listening on.
     """
-    if isinstance(server, Server) and server.getSocket().fileno() in self.__servers:
-      self.__selector.removeServer(server.getSocket().fileno())
+    if isinstance(server, Server) and server.getFileDesc() in self.__servers:
+      self.__selector.removeServer(server.getFileDesc())
 
   def __socketerrors(self, fileno):
     if fileno in self.__clients:
@@ -526,9 +575,11 @@ class SocketExecuter():
       self.__selector.removeServer(fileno)
       return
     SERVER = self.__servers[fileno]
-    self.__log.debug("New Connection")
-    conn, addr = SERVER.getSocket().accept()
-    SERVER.addClient(conn)
+    try:
+      conn, addr = SERVER.getSocket().accept()
+      SERVER.addClient(conn)
+    except:
+      pass
     
 
   def __clientRead(self, fileno):
@@ -538,30 +589,33 @@ class SocketExecuter():
     
     read_client = self.__clients[fileno]
     data_read = 0
+    data = ""
     try:
       if read_client._getType() == "CUSTOM":
         data = read_client.READER()
         if data != EMPTY_STRING:
           read_client._addRead(data)
           data_read += len(data)
-      elif read_client.getSocket().type == socket.SOCK_STREAM:
+      elif read_client._getType() == "TCP":#.getSocket().type == socket.SOCK_STREAM:
         data = read_client.getSocket().recv(655360)
         if data != EMPTY_STRING:
           read_client._addRead(data)
           data_read += len(data)
         else:
-          read_client.close()
-      elif read_client.getSocket().type == socket.SOCK_DGRAM:
-        data = EMPTY_STRING
-        try:
-          data, addr = read_client.getSocket().recvfrom(65536)
-        except socket.error, e:
-          print data, e
-          if e.args[0] != errno.EWOULDBLOCK:
-            raise e
-        if data != EMPTY_STRING:
-          read_client.runOnClientThread(read_client._addRead, args=([addr, data],))
-          data_read+=len(data)
+          self.__clientErrors(read_client, fileno)
+      elif read_client._getType() == "UDP":
+        for i in range(100):
+          data = EMPTY_STRING
+          try:
+            data, addr = read_client.getSocket().recvfrom(65536)
+          except socket.error as e:
+            if e.args[0] != errno.EWOULDBLOCK:
+              raise e
+          if data != EMPTY_STRING:
+            read_client.runOnClientThread(read_client._addRead, args=([addr, data],))
+            data_read+=len(data)
+          else:
+            break
       self.__stats._addRead(data_read)
       return len(data)
     except ssl.SSLError as err:
@@ -569,8 +623,8 @@ class SocketExecuter():
     except KeyError as e:
       self.__log.debug("client removed on read")
     except IOError as e:
-      if e.errno != errno.EAGAIN:
-        self.__log.error("Read Error: %s"%(sys.exc_info()[0]))
+      if e.errno != errno.EAGAIN and e.errno != errno.EBADF:
+        self.__log.error("Read Error 2: %s"%(sys.exc_info()[0]))
         self.__log.error(e)
     except Exception as e:
       self.__log.error("Read Error: %s"%(sys.exc_info()[0]))
@@ -591,13 +645,19 @@ class SocketExecuter():
         CLIENT._reduceWrite(l)
       elif CLIENT._getType() == "TCP":
         w = CLIENT._getWrite()
-        l = CLIENT.getSocket().send(w)
+        try:
+          l = CLIENT.getSocket().send(w)
+        except ssl.SSLEOFError as e:
+          self.__log.error("SSLError closing client!")
+          CLIENT.close()
+          
         CLIENT._reduceWrite(l)
       elif self.__clients[fileno].TYPE == "CUSTOM":
         l = self.__clients[fileno].WRITER()
       self.__stats._addWrite(l)
     except Exception as e:
       self.__log.debug("clientWrite Error: %s"%(sys.exc_info()[0]))
+      logging.exception("")
       self.__log.debug(e)
 
   def __serverErrors(self, server, fileno):
@@ -615,64 +675,8 @@ class SocketExecuter():
     client.close()
         
   def __closeServer(self, server):
-    self.stopServer(server)
-    del self.__servers[server.getSocket().fileno()]
-    
-    
-def noExcept(task, *args, **kwargs):
-  """
-  Helper function that helps swallow exceptions.
-  """
-  try:
-    task(*args, **kwargs)
-  except Exception as e:
-    pass
+    server.close()
+    del self.__servers[server.getFileDesc()]
 
-class Stats(object):
-  def __init__(self):
-    self.__clock = Clock()
-    self.__startTime = self.__clock.accurate_time()
-    self.__totalRead = 0
-    self.__totalWrite = 0
-  
-  def getTotalRead(self):
-    """
-    Returns the total bytes read.
-    """
-    return self.__totalRead
-  
-  def getTotalWrite(self):
-    """
-    Returns the total bytes writen.
-    """
-    return self.__totalWrite
-  
-  def getReadRate(self):
-    """
-    Returns the bytes read per second.
-    """
-    X = round(self.__totalRead/(self.__clock.accurate_time() - self.__startTime), 4)
-    if X > 0:
-      return X
-    else:
-      return 0 
-  
-  def getWriteRate(self):
-    """
-    Returns the bytes written per second.
-    """
-    X = round(self.__totalWrite/(self.__clock.accurate_time() - self.__startTime), 4)
-    if X > 0:
-      return X
-    else:
-      return 0
-  
-  def _addRead(self, size):
-    self.__totalRead += size
-    
-  def _addWrite(self, size):
-    self.__totalWrite += size
-    
-    
     
     

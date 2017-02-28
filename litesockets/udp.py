@@ -1,5 +1,5 @@
 import socket, logging
-import client
+from . import client
 
 
 class UDPServer(client.Client):
@@ -57,7 +57,7 @@ class UDPServer(client.Client):
     if udpc.getReadBufferSize() < udpc.MAXBUFFER:
       udpc.runOnClientThread(udpc._addRead, args=(data[1],))
     else:
-      print "DROPPED!"
+      pass
     #X = self.getStats()._addRead(len(data))
 
   def getClients(self):

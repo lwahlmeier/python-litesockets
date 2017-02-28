@@ -1,3 +1,4 @@
+from __future__ import print_function
 import time
 
 class testClass():
@@ -15,7 +16,7 @@ class testClass():
     self.read_len+=len(data)
 
   def accept(self, client):
-    print "New client", client
+#    print("New client", client)
     self.clients.append(client)
     client.setReader(self.read)
     client.addCloseListener(self.remove)
@@ -25,12 +26,11 @@ class testClass():
     try:
       self.clients.pop(self.clients.index(client))
     except Exception as e:
-      print "client not in list", e
-      print self.clients
+      print("client not in list", e)
+      print(self.clients)
 
 
 def waitTill(F, V, T):
-  c = 0
-  while F(V) and c < T:
-    time.sleep(.01)
-    c+=1
+  t = time.time()*1000
+  while F(V) and (time.time()*1000)-t < T:
+    time.sleep(.1)
