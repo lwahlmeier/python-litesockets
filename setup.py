@@ -14,7 +14,7 @@ setup (# Distribution meta-data
        test_suite = "tests",
        license = "unlicense",
        description = "A multi threaded socket library for python",
-       install_requires = ['threadly>=0.7.1'],
+       install_requires = ['threadly>=0.7.2'],
        packages =  ['litesockets'],
        keywords = ["networking"],
        classifiers=[
