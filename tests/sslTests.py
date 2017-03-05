@@ -84,13 +84,13 @@ class TestSSL(unittest.TestCase):
       client.write(TEST_STRING)
     newSha = baseSha.hexdigest()
 
-    utils.waitTill(lambda X: test.read_len < X, BYTES, 500)
+    utils.waitTill(lambda X: test.read_len < X, BYTES, 5000)
 
     self.assertEquals(test.read_len, BYTES)
     self.assertEquals(hashlib.sha256(b''.join(test.reads)).hexdigest(), newSha)
     test.clients[0].write(b''.join(test.reads))
 
-    utils.waitTill(lambda X: test_client.read_len < X, BYTES, 500)
+    utils.waitTill(lambda X: test_client.read_len < X, BYTES, 5000)
 
     self.assertEquals(test.read_len, BYTES)
     self.assertEquals(hashlib.sha256(b''.join(test_client.reads)).hexdigest(), newSha)
