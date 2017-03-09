@@ -3,6 +3,7 @@ import unittest, time, hashlib, logging
 import litesockets
 from . import utils
 import operator
+import struct
 
 try:
   xrange(1)
@@ -12,6 +13,7 @@ except:
 
 
 TEST_STRING = ("TEST"*100).encode('utf-8')
+TEST_BINARY = struct.pack("!BBBBBB", 255, 0, 0, 11, 127, 200) 
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(name)s - %(message)s")
 log = logging.getLogger("root")
@@ -26,6 +28,41 @@ class TestTcp(unittest.TestCase):
 
   def tearDown(self):
     self.socketExecuter.stop()
+
+  def test_SimpleTcpSendTestbinary(self):
+    test = utils.testClass(self.socketExecuter)
+    server = self.socketExecuter.createTCPServer("localhost", 0)
+    server.setOnClient(test.accept)
+    server.start()
+    PORT = server.getSocket().getsockname()[1]
+
+    client = self.socketExecuter.createTCPClient("localhost", PORT)
+    test_client = utils.testClass(self.socketExecuter)
+    client.setReader(test_client.read)
+    client.connect()
+    client.write(TEST_BINARY)
+
+    utils.waitTill(lambda X: test.read_len < X, len(TEST_BINARY) , 500)
+
+    self.assertEquals(test.reads[0], TEST_BINARY)
+    test.reads.pop(0)
+    test.clients[0].write(TEST_BINARY)
+
+    utils.waitTill(lambda X: test_client.read_len <= X, 0, 500)
+
+    self.assertEquals(test_client.reads[0], TEST_BINARY)
+    self.assertEquals(len(self.socketExecuter.getClients()), 2)
+
+    print("Closing!")
+    client.close()
+    server.close()
+
+    print("{}".format(len(self.socketExecuter.getClients())))
+    utils.waitTill(lambda X: len(self.socketExecuter.getClients()) > X, 0, 500)
+    utils.waitTill(lambda X: len(self.socketExecuter.getServers()) > X, 0, 500)
+
+    self.assertEquals(len(self.socketExecuter.getClients()), 0)
+    self.assertEquals(len(self.socketExecuter.getServers()), 0)
 
   def test_SimpleTcpSendTest(self):
     test = utils.testClass(self.socketExecuter)

@@ -1,7 +1,15 @@
-from __future__ import absolute_import
+from __future__ import absolute_import, unicode_literals
 import threading, socket
 from .stats import Stats
 from .stats import noExcept
+import sys
+if sys.version_info < (3,):
+  def b(x):
+    return x
+else:
+  import codecs
+  def b(x):
+    return codecs.latin_1_encode(x)[0]
 
 try:
   xrange(1)
@@ -131,8 +139,8 @@ class Client(object):
     `data` data to write to the socket.
     """
     if self.__TYPE == "TCP":
-      if type(data) is str:
-        data = data.encode("utf-8")
+      if type(data) == str:
+        data = b(data)
       size = len(data)
       data_list = []
       for i in xrange(0,size,1024*64):
@@ -146,7 +154,7 @@ class Client(object):
       self.__socketExecuter.updateClientOperations(self)
     elif self.__TYPE == "UDP":
       if type(data[1]) is str:
-        data[1] = data[1].encode("utf-8")
+        data[1] = b(data[1])
       try:
         self.__writelock.acquire()
         self.__write_buff_list.append(data)

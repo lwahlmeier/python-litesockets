@@ -305,6 +305,9 @@ class EpollSelector():
     
   def stop(self):
     self.__running = False
+    self.__ReadSelector.close()
+    self.__WriteSelector.close()
+    self.__AcceptorSelector.close()
     self.__localExecuter.shutdown_now()
     
   def addServer(self, fileno):
@@ -344,7 +347,7 @@ class EpollSelector():
         
   
   def __doReads(self):
-    events = self.__ReadSelector.poll(1)
+    events = self.__ReadSelector.poll(100)
     for fileno, event in events:
       try:
         if event & select.EPOLLIN:
@@ -359,7 +362,7 @@ class EpollSelector():
       self.__localExecuter.execute(self.__doReads)
         
   def __doWrites(self):
-    events = self.__WriteSelector.poll(1)
+    events = self.__WriteSelector.poll(100)
     for fileno, event in events:
       try:
         if event & select.EPOLLOUT:
@@ -375,7 +378,7 @@ class EpollSelector():
           
 
   def __doAcceptor(self):
-    events = self.__AcceptorSelector.poll(1)
+    events = self.__AcceptorSelector.poll(100)
     for fileno, event in events:
       try:
         if event & select.EPOLLIN:

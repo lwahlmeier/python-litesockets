@@ -2,7 +2,7 @@
 from setuptools import setup
 
 
-VERSION = "0.7.0"
+VERSION = "0.7.1"
 
 setup (# Distribution meta-data
        name = "litesockets",
