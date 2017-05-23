@@ -192,6 +192,7 @@ class Client(object):
 
   def _addRead(self, data):
     self.__readlock.acquire()
+    print("add Read:", len(data))
     try:
       size = len(data)
       self.__read_buff_list.append(data)

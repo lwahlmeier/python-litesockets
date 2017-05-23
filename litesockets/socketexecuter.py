@@ -27,20 +27,26 @@ class SelectSelector():
     self.__acceptCallback = acceptCallback
     self.__errorCallback = errorCallback
     
-    self.__readClients = set()
-    self.__writeClients = set()
-    self.__acceptServers = set()
-    
+    self.__nbLock = threading.Condition()
     self.__nb_readClients = set()
     self.__nb_writeClients = set()
     self.__nb_acceptServers = set()
     
-    self.__writeLock = threading.Condition()
-    self.__readLock = threading.Condition()
-    self.__acceptLock = threading.Condition()
-    self.__nbLock = threading.Condition()
+    self.__writeLock = []
+    self.__readLock = []
+    self.__acceptLock = []
     
     self.__localExecuter = Scheduler(5) #need 5 thread, all can be blocked at once
+
+    self.__readClients = []
+    self.__writeClients = []
+    self.__acceptServers =[]
+
+    for i in xrange(4):
+      self.__selectorLock[i] = threading.Condition()
+      self.__readClients[i] = set()
+      self.__writeClients[i] = set()
+      self.__writeClients[i] = set()
     self.__running = True
     self.__localExecuter.execute(self.__doReads)
     self.__localExecuter.execute(self.__doWrites)
@@ -60,6 +66,46 @@ class SelectSelector():
     now = FileNoWrapper(fileno)
     if now in self.__acceptServers:
       self.__acceptServers.remove(now)
+
+  def __doSelect(self, num):
+    readClients = self.__readClients[num]
+    writeClients = self.__writeClients[num]
+    acceptServers = self.__acceptServers[num]
+    selectLock = self.__selectorLock[num]
+    rlist = []
+    wlist = []
+    xlist = []
+    while self.__running:
+      try:
+        selectLock.acquire()
+        if len(acceptServers) >0 or len(writeClients) > 0 or len(readClients) > 0:
+          rlist, wlist, xlist = select.select(readClients|acceptServers, writeClients, readClients|acceptServers, .1)
+        else:
+          time.sleep(.1)
+      except:
+        pass
+      finally:
+        selectLock.release()
+      try:
+        for rdy in rlist:
+          if rdy in acceptServers:
+            self.__acceptCallback(rdy.fileno())
+          elif rdy in readClients:
+            self.__readCallback(rdy.fileno())
+        for rdy in rlist:
+          if rdy in writeClients:
+            self.__writeCallback(rdy.fileno())
+        for rdy in xlist:
+          self.__errorCallback(bad.fileno())
+
+      except:
+        pass
+
+
+
+  def addClient(self, fileno, read=False, write=False):
+  def removeClient(self, fileno):
+    
     
   def addReader(self, fileno):
     now = FileNoWrapper(fileno)
@@ -285,58 +331,84 @@ class EpollSelector():
   def __init__(self, readCallback, writeCallback, acceptCallback, errorCallback):
     self.__log = logging.getLogger("root.litesockets.EpollSelector")
     self.__log.info("Creating epoll selector for: {}".format(platform.system()))
-    self.__DEFAULT_READ_POLLS = select.EPOLLIN|select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR
+    self.__DEFAULT_READ_POLLS = select.EPOLLIN|select.EPOLLET|select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR
     self.__DEFAULT_ACCEPT_POLLS = select.EPOLLIN|select.EPOLLRDHUP|select.EPOLLHUP|select.EPOLLERR
     self.__readCallback = readCallback
     self.__writeCallback = writeCallback
     self.__acceptCallback = acceptCallback
     self.__errorCallback = errorCallback
+    self.__servers = set()
+    self.__clients = set()
     
-    self.__ReadSelector = select.epoll()
-    self.__WriteSelector = select.epoll()
-    self.__AcceptorSelector = select.epoll()
     self.__running = True
     self.__localExecuter = Scheduler(3)
-    
-    self.__localExecuter.execute(self.__doReads)
-    self.__localExecuter.execute(self.__doWrites)
-    self.__localExecuter.execute(self.__doAcceptor)
-
+    self.__selectors = []
+    for i in xrange(1):
+      self.__selectors.append(select.epoll())
+      self.__localExecuter.execute(self.__runSelector, args=(i,))
     
   def stop(self):
     self.__running = False
-    self.__ReadSelector.close()
-    self.__WriteSelector.close()
-    self.__AcceptorSelector.close()
-    self.__localExecuter.shutdown_now()
+    for s in self.__selectors:
+      s.close()
+  
+  def __runSelector(self, sn):
+    lsel = self.__selectors[sn]
+    while self.__running:
+      events = self.__selectors[sn].poll(100)
+      for fileno, event in events:
+        try:
+          if event & select.EPOLLIN:
+            if fileno in self.__clients:
+              self.__readCallback(fileno)
+            elif fileno in self.__servers:
+              self.__acceptCallback(fileno)
+            else:
+              self.__errorCallback(fileno)
+              noExcept(lsel.unregister, fileno)
+          if event & select.EPOLLOUT:
+            self.__writeCallback(fileno)
+          if (event & select.EPOLLRDHUP or event & select.EPOLLHUP or event & select.EPOLLERR):
+            self.__errorCallback(fileno)
+            noExcept(lsel.unregister, fileno)
+        except Exception as e:
+          self.__log.debug("Read Error: %s"%(sys.exc_info()[0]))
+          self.__log.debug(e)
     
   def addServer(self, fileno):
+    fsn = fileno%len(self.__selectors)
     try:
-      self.__AcceptorSelector.register(fileno, self.__DEFAULT_ACCEPT_POLLS)
+      self.__servers.add(fileno)
+      self.__selectors[fsn].register(fileno, self.__DEFAULT_ACCEPT_POLLS)
     except:
-      noExcept(self.__AcceptorSelector.modify, fileno, self.__DEFAULT_ACCEPT_POLLS)
+      noExcept(self.__selectors[fsn].modify, fileno, self.__DEFAULT_ACCEPT_POLLS)
       
   def removeServer(self, fileno):
-    noExcept(self.__AcceptorSelector.unregister, fileno)
-    
-  def addReader(self, fileno):
-    try:
-      self.__ReadSelector.register(fileno, self.__DEFAULT_READ_POLLS)
-    except:
-      noExcept(self.__ReadSelector.modify, fileno, self.__DEFAULT_READ_POLLS)
+    fsn = fileno%len(self.__selectors)
+    noExcept(self.__selectors[fsn].unregister, fileno)
+    noExcept(self.__servers.remove, fileno)
+
+  def addClient(self, fileno, read=False, write=False):
+    self.__clients.add(fileno)
+    if read or write:
+      fsn = fileno%len(self.__selectors)
+      sel = self.__selectors[fsn]
+      op = select.EPOLLONESHOT
+      if read:
+        op|=(self.__DEFAULT_READ_POLLS)
+      if write:
+        op|=(select.EPOLLOUT)
+      try:
+        sel.register(fileno, op)
+      except:
+        noExcept(sel.modify, fileno,op)
+
+  def removeClient(self, fileno):
+    noExcept(self.__clients.remove, fileno)
+    fsn = fileno%len(self.__selectors)
+    sel = self.__selectors[fsn]
+    noExcept(sel.unregister, fileno)  
       
-  def removeReader(self, fileno):
-    noExcept(self.__ReadSelector.unregister, fileno)
-    
-  def addWriter(self, fileno):
-    try:
-      self.__WriteSelector.register(fileno, select.EPOLLOUT)
-    except:
-      noExcept(self.__WriteSelector.modify, fileno, select.EPOLLOUT)
-      
-  def removeWriter(self, fileno):
-    noExcept(self.__WriteSelector.unregister, fileno)
-    
   def __doThread(self, t):
     while self.__running:
       try:
@@ -344,55 +416,6 @@ class EpollSelector():
       except Exception as e:
         self.__log.error("GP Socket Exception: %s: %s"%(t, sys.exc_info()[0]))
         self.__log.error(e)
-        
-  
-  def __doReads(self):
-    events = self.__ReadSelector.poll(100)
-    for fileno, event in events:
-      try:
-        if event & select.EPOLLIN:
-          self.__readCallback(fileno)
-        if (event & select.EPOLLRDHUP or event & select.EPOLLHUP or event & select.EPOLLERR):
-          self.__errorCallback(fileno)
-          noExcept(self.__ReadSelector.unregister, fileno)
-      except Exception as e:
-        self.__log.debug("Read Error: %s"%(sys.exc_info()[0]))
-        self.__log.debug(e)
-    if self.__running:
-      self.__localExecuter.execute(self.__doReads)
-        
-  def __doWrites(self):
-    events = self.__WriteSelector.poll(100)
-    for fileno, event in events:
-      try:
-        if event & select.EPOLLOUT:
-          self.__writeCallback(fileno)
-        else:
-          self.__errorCallback(fileno)
-          noExcept(self.__WriteSelector.unregister, fileno)
-      except Exception as e:
-        self.__log.debug("Write Error: %s"%(sys.exc_info()[0]))
-        self.__log.debug(e)
-    if self.__running:
-      self.__localExecuter.execute(self.__doWrites)
-          
-
-  def __doAcceptor(self):
-    events = self.__AcceptorSelector.poll(100)
-    for fileno, event in events:
-      try:
-        if event & select.EPOLLIN:
-          self.__acceptCallback(fileno)
-        else:
-          self.__errorCallback(fileno)
-          noExcept(self.__WriteSelector.unregister, fileno)
-      except Exception as e:
-        self.__log.debug("Accept Error: %s"%(sys.exc_info()[0]))
-        self.__log.debug(e)
-        logging.exception("")
-    if self.__running:
-      self.__localExecuter.execute(self.__doAcceptor)
-        
   
 
 
@@ -475,18 +498,16 @@ class SocketExecuter():
     FN = client.getFileDesc()
     if FN in self.__clients:
       if client.isClosed():
-        self.__selector.removeReader(FN)
-        self.__selector.removeWriter(FN)
+        self.__selector.removeClient(FN)
         del self.__clients[FN]
         return
+      doRead = True
+      doWrite = True
       if client.getReadBufferSize() >= client.MAXBUFFER or disable:
-        self.__selector.removeReader(FN)
-      else:
-        self.__selector.addReader(FN)
+        doRead = False
       if client.getWriteBufferSize() == 0  or disable:
-        self.__selector.removeWriter(FN)
-      else:
-        self.__selector.addWriter(FN)
+        doWrite = False
+      self.__selector.addClient(FN, read=doRead, write=doWrite)
           
   
   def createUDPServer(self, host, port):
@@ -587,9 +608,8 @@ class SocketExecuter():
 
   def __clientRead(self, fileno):
     if fileno not in self.__clients:
-      self.__selector.removeReader(fileno)
+      self.__selector.removeClient(fileno)
       return
-    
     read_client = self.__clients[fileno]
     data_read = 0
     data = ""
@@ -637,7 +657,7 @@ class SocketExecuter():
 
   def __clientWrite(self, fileno):
     if fileno not in self.__clients:
-      self.__selector.removeWriter(fileno)
+      self.__selector.removeClient(fileno)
       return
     CLIENT = self.__clients[fileno]
     l = 0
@@ -670,11 +690,11 @@ class SocketExecuter():
     
   def __clientErrors(self, client, fileno):
     self.__log.debug("Removing client %d "%(fileno))
-    self.__selector.removeReader(fileno)
-    self.__selector.removeWriter(fileno)
+    self.__selector.removeClient(fileno)
     client.close()
   
   def __closeClient(self, client):
+    self.__selector.removeClient(client.getFileDesc())
     client.close()
         
   def __closeServer(self, server):
